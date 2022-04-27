@@ -18,7 +18,6 @@ library(MASS)
 library(matrixNormal)
 library(ggpattern)
 library(latex2exp)
-library(scales)
 
 set.seed(2021)
 
@@ -199,96 +198,25 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
       ungroup() %>%
       as.data.frame() %>%
       mutate(sig = c(t(pvals))) %>%
-      group_by(alpha, taxa, covariate) %>%
-      mutate(labl = ifelse((sig == 1 & alpha > 1), 1, 0)) %>%
-      mutate(tax = ifelse(labl == 1,taxa , NA)) %>%
-      ungroup() %>%
       mutate(gs = ifelse(taxa %in% c(1,3,4,5,9,10,16,25,27,28,31), taxa, NA)) %>%
       mutate(sig = ifelse(alpha == alpha[1] & !is.na(gs),1,  sig)) %>% ####This is for plotting only, so all the gold-standard labels come through. It DOES NOT change results.
-      group_by(taxa, covariate) %>%
-      mutate(highlight = sum(labl, na.rm = TRUE)) %>%
-      ungroup() %>%
       mutate(logit.y = logit(ecdf)) %>%
       ggplot(aes(x=alpha, y = logit.y, group=taxa)) +
       geom_line() +
-      gghighlight((sig == 1)) +
+      gghighlight((sig == 1), use_direct_label = FALSE) +
       gghighlight(!is.na(gs), unhighlighted_params = list(colour = NULL)) +
       geom_hline(yintercept=.5, color="red", linetype = "dashed") +
       theme_bw() +
       ylab("ecdf(0)") +
-      xlab(TeX("$\\alpha$")) +
+      xlab(TeX("$\\tau$")) +
       theme(text = element_text(size=18)) + 
-      ylim(c(-8,4)) + 
+      ylim(c(-8,8)) + 
       #scale_y_continuous(trans = squish_trans(.25, .75, 4),
       #                   breaks = c(0,.1,.25,.5,.75,.9,1)) +
-      geom_vline(xintercept = 3, color = "black", linetype = "dotted")
+      geom_vline(xintercept = 1, color = "black", linetype = "dotted")
     p1
     
-    p2 = B %>% 
-      map(gather_array, val, taxa, covariate, iter) %>% 
-      bind_rows(.id="alpha") %>% 
-      mutate(alpha=alphaseq[as.integer(alpha)]) %>% 
-      filter(covariate == 7) %>% 
-      group_by(alpha, taxa, covariate) %>% 
-      summarise(ecdf = ecdf(val)(0)) %>% 
-      ungroup() %>%
-      as.data.frame() %>%
-      mutate(sig = c(t(pvals))) %>%
-      group_by(alpha, taxa, covariate) %>%
-      mutate(labl = ifelse((sig == 1 & alpha > 1), 1, 0)) %>%
-      mutate(tax = ifelse(labl == 1,taxa , NA)) %>%
-      ungroup() %>%
-      mutate(gs = ifelse(taxa %in% c(1,3,4,5,10,16,25,27,28), taxa, NA)) %>%
-      group_by(taxa, covariate) %>%
-      mutate(highlight = sum(labl, na.rm = TRUE)) %>%
-      ungroup() %>%
-      ggplot(aes(x=alpha, y = ecdf, group=taxa)) +
-      geom_line() +
-      gghighlight((sig == 1)) +
-      gghighlight(!is.na(gs), unhighlighted_params = list(colour = NULL)) +
-      geom_hline(yintercept=.5, color="red", linetype = "dashed") +
-      theme_bw() +
-      ylab("ecdf(0)") +
-      xlab(TeX("$\\alpha$")) +
-      coord_cartesian(ylim = c(0, .25)) +
-      theme(text = element_text(size=18)) + 
-      scale_y_reverse() %>%
-      geom_vline(xintercept = 3, color = "black", linetype = "dotted")
-    p2
-    
-    p3 = B %>% 
-      map(gather_array, val, taxa, covariate, iter) %>% 
-      bind_rows(.id="alpha") %>% 
-      mutate(alpha=alphaseq[as.integer(alpha)]) %>% 
-      filter(covariate == 7) %>% 
-      group_by(alpha, taxa, covariate) %>% 
-      summarise(ecdf = ecdf(val)(0)) %>% 
-      ungroup() %>%
-      as.data.frame() %>%
-      mutate(sig = c(t(pvals))) %>%
-      group_by(alpha, taxa, covariate) %>%
-      mutate(labl = ifelse((sig == 1 & alpha > 1), 1, 0)) %>%
-      mutate(tax = ifelse(labl == 1,taxa , NA)) %>%
-      ungroup() %>%
-      mutate(gs = ifelse(taxa %in% c(9, 31), taxa, NA)) %>%
-      group_by(taxa, covariate) %>%
-      mutate(highlight = sum(labl, na.rm = TRUE)) %>%
-      ungroup() %>%
-      ggplot(aes(x=alpha, y = ecdf, group=taxa)) +
-      geom_line() +
-      gghighlight((sig == 1)) +
-      gghighlight(!is.na(gs), unhighlighted_params = list(colour = NULL)) +
-      geom_hline(yintercept=.5, color="red", linetype = "dashed") +
-      theme_bw() +
-      ylab("ecdf(0)") +
-      xlab(TeX("$\\alpha$")) +
-      coord_cartesian(ylim = c(.75, 1)) +
-      theme(text = element_text(size=18)) + 
-      scale_y_reverse() %>%
-      geom_vline(xintercept = 3, color = "black", linetype = "dotted")
-    p3
-    
-      return(list(p1 = p1, p2 = p2, p3 = p3))
+      return(list(p1 = p1))
   }else{
     return(print("Method not supported!"))
   }
@@ -302,13 +230,10 @@ flow_filtered_agg = flow_filtered %>%
   summarise(count = mean(count)) %>%
   ungroup()
 
-plots = plot_alpha(Y,X, alpha=c(.1, .25, .5,  seq(2, 10, by=0.25)), total_model = "logNormal", mean_lnorm = rep(c(log(1),log(20)), each = 6), sample = 1:12, prob = .95)
+plots = plot_alpha(Y,X, alpha=c(.1, .25, .5,1,  seq(2, 10, by=0.25)), total_model = "logNormal", mean_lnorm = rep(c(log(1),log(4)), each = 6), sample = 1:12, prob = .975)
 plots$p1
 ggsave(file.path("results", "realData_alpha.pdf"), height=4, width=7)
-plots$p2
-ggsave(file.path("results", "realData_alpha_bottom.pdf"), height=2, width=7)
-plots$p3
-ggsave(file.path("results", "realData_alpha_top.pdf"), height=2, width=7)
+
 
 
 flow_filtered <- flow_filtered %>% 
@@ -331,18 +256,14 @@ Xi = G%*%Omega%*%t(G)
 
 fit_lmm <- supplementation.mln(as.matrix(Y),X,
                                upsilon = upsilon, Gamma = Gamma,
-                               Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, total_model = "pim", alpha_total = 5)
+                               Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, total_model = "pim", alpha_total = 1)
 
 
 
 fit_unif <- supplementation.mln(as.matrix(Y),X,
                                upsilon = upsilon, Gamma = Gamma,
-                               Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000,  total_model = "logNormal",sd_lnorm = sqrt(9/2), mean_lnorm=rep(c(log(1),log(20)),each = 6), sample = 1:12)
+                               Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000,  total_model = "logNormal",sd_lnorm = sqrt(1^2/2), mean_lnorm=log(rep(c(1,4),each = 6)), sample = 1:12)
 
-
-fit_clr <- supplementation.mln(as.matrix(Y),X,
-                                upsilon = upsilon, Gamma = Gamma,
-                                Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000,  total_model = "logNormal", sd_lnorm =  1e-3, mean_lnorm = 0)
 
 fit_gs <- supplementation.mln(as.matrix(Y),X,
                                upsilon = upsilon, Gamma = Gamma,
@@ -374,7 +295,7 @@ deseq_results = deseq_fit %>%
 deseq_results
 ###Aldex2 now
 
-mmX <- model.matrix(~ base::I(vessel) + base::I(day),data = otu_filtered_metadata)
+mmX <- model.matrix(~ base::I(vessel) + base::I(day)-1,data = otu_filtered_metadata)
 aldex_fit <- aldex(Y,mmX,"glm",mc.samples = 128, denom = "all")
 
 aldex_results = aldex_fit %>% 
@@ -388,17 +309,7 @@ aldex_results
 
 # Summarise results and plot ----------------------------------------------
 
-sig_tram_lmm = summary_tram(fit_lmm, prob =.90) %>%
-  filter(covariate == "base::I(day)14") %>% 
-  as.data.frame() %>%
-  filter(sign(pLow)==sign(pHigh))
-
 sig_tram_unif = summary_tram(fit_unif, prob =.975) %>%
-  filter(covariate == "base::I(day)14") %>% 
-  as.data.frame() %>%
-  filter(sign(pLow)==sign(pHigh))
-
-sig_tram_clr = summary_tram(fit_clr, prob =.975) %>%
   filter(covariate == "base::I(day)14") %>% 
   as.data.frame() %>%
   filter(sign(pLow)==sign(pHigh))
@@ -408,8 +319,10 @@ sig_tram_gs = summary_tram(fit_gs, prob =.975) %>%
   as.data.frame() %>%
   filter(sign(pLow)==sign(pHigh))
 
+
+
 ###Extract anything that's significant anywhere across all models
-sig.values = c(aldex_results$category,deseq_results$category, sig_tram_unif$category,sig_tram_gs$category) %>% unique
+sig.values = c(aldex_results$category,deseq_results$category,sig_tram_gs$category, sig_tram_unif$category) %>% unique
 
 ###Some light processing to make it more useful
 #sig.values = sig.values %>%
@@ -429,8 +342,8 @@ sig.df = sig.df %>%
   mutate(Model = c(rep("ALDEx2", q),rep("DESeq2", q), rep("Scale Simulation \n (Design-Based) ", q), rep("Gold Standard \n (Flow)       ", q))) %>%
   mutate(sigcode = c(ifelse(sig.values %in% aldex_results$category, 1, 0),ifelse( sig.values %in% deseq_results$category, 1, 0),ifelse( sig.values %in% sig_tram_unif$category, 1, 0), ifelse( sig.values %in% sig_tram_gs$category, 1, 0))) %>%
   mutate(res = ifelse(true.pos == 1 & sigcode == 1, "TP", NA)) %>%
-  mutate(res = ifelse(true.pos == 1 & sigcode == 0, "FN", res)) %>%
   mutate(res = ifelse(true.pos == 0 & sigcode == 0, "TN", res)) %>%
+  mutate(res = ifelse(true.pos == 1 & sigcode == 0, "FN", res)) %>%
   mutate(res = ifelse(true.pos == 0 & sigcode == 1, "FP", res)) %>%
   mutate(sigcode = factor(sigcode, levels = list("Non. Sig."="0", "Sig."="1"))) %>%
   mutate(Sequence = as.numeric(sig.df$Sequence)) %>%
@@ -438,15 +351,16 @@ sig.df = sig.df %>%
   mutate(Sequence = as.factor(Sequence)) %>%
   filter(!is.na(Sequence))
 
+
 sig.df$Model = factor(sig.df$Model, levels=c("ALDEx2", "DESeq2", "Scale Simulation \n (Design-Based) ", "Gold Standard \n (Flow)       "))
 sig.df$Sequence = as.character(sig.df$Sequence)
 sig.df$Sequence = factor(sig.df$Sequence, levels =c(as.character(sort(as.numeric(str_split_fixed(sig.values, "\\_", 2)[,2]))), "Other"))
 
 ##No color labels
-
 p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
-  geom_tile_pattern(aes(fill=res, pattern = res), color="darkgrey",pattern_fill = 'grey',pattern_colour  = 'grey', pattern_density = 0.015) +
-  theme_minimal() +
+  geom_tile_pattern(aes(fill=res, pattern = res), color="darkgrey",pattern_fill = 'grey', pattern_colour  = 'grey', pattern_density = 0.015) +
+  theme_minimal(18) +
+  labs(title = "") +
   theme(panel.grid = element_blank(), 
         legend.title=element_blank(),
         legend.key.size = unit(.825, "cm")) +
@@ -455,11 +369,21 @@ p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=16))
 
 p2
+
+
+
+
+
+
 ggsave(file.path("results", "model_comparison_flowData.pdf"), height=4, width=5)
 
 
-
+###Graph for the bayesian PIM
 ###Extract anything that's significant anywhere across all models
+sig_tram_lmm = summary_tram(fit_lmm, prob =.9) %>%
+  filter(covariate == "base::I(day)14") %>% 
+  as.data.frame() %>%
+  filter(sign(pLow)==sign(pHigh))
 sig.values = c(sig_tram_lmm$category, sig_tram_gs$category) %>% unique
 
 ###Some light processing to make it more useful
@@ -499,7 +423,8 @@ sig.df$Sequence = factor(sig.df$Sequence, levels =c(as.character(sort(as.numeric
 
 p3 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
   geom_tile_pattern(aes(fill=res, pattern = res), color="darkgrey",pattern_fill = 'grey',pattern_colour  = 'grey', pattern_density = 0.015) +
-  theme_minimal() +
+  theme_minimal(18) +
+  labs(title = "") +
   theme(panel.grid = element_blank(), 
         legend.title=element_blank(),
         legend.key.size = unit(.825, "cm")) +

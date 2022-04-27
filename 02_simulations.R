@@ -6,6 +6,7 @@ library(fido)
 library(driver)
 library(tidyverse)
 library(DESeq2)
+##devtools::install_github("michellepistner/ALDEx_bioc)
 library(ALDEx2)
 library(gghighlight)
 library(cowplot)
@@ -18,7 +19,7 @@ library(MASS)
 library(matrixNormal)
 library(ggpattern)
 library(latex2exp)
-set.seed(1993)
+set.seed(2022)
 
 ###Setting the data parameters for all simulations
 d <- c(4000, 4000, 4000, 4000, 4000, 400,400,400,400,4000,400,500,500,500,400,400,400,400,400,100,400, # Pre
@@ -44,18 +45,21 @@ aldexDeseq_analysis <- function(d, n, seq.depth, pval = 0.05, prob = .99){
   afit <- summary_aldex2(afit)
   afit <- append_sig(afit, function(x) sig_aldex2(x, pval=pval))
   
-  upsilon = dd + 10
-  Gamma = diag(c(5,1))
-  Theta = matrix(0, dd-1, 2)
-  Omega = diag(dd)
-  G = cbind(diag(dd-1), -1)
-  Xi = G%*%Omega%*%t(G)
-  sfit = run_fakeAldex(rdat,
-                       upsilon = upsilon, Gamma = Gamma,
-                       Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 5000, total_model = "logNormal", mean_lnorm = 0, sd_lnorm = 1, test="bayes_glm")
+  sfit = run_fakeAldex(rdat, n_samples = 2000, scale.samples = matrix(rlnorm(nrow(rdat)*2000, 0, .6), ncol = 2000), test="t")
   
-  sfit <- summary_tram(sfit, prob=prob)
-  sfit <- append_sig(sfit, sig_tram)
+  sfit <- summary_aldex2(sfit)
+  sfit <- append_sig(sfit, function(x) sig_aldex2(x, pval=pval))
+  
+  scale_samps = matrix(NA, nrow = 2*n, ncol = 2000)
+  for(i in 1:nrow(scale_samps)){
+    tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,.2)
+    scale_samps[i,] = rlnorm(2000, tmp, .6)
+  }
+  new.sfit <- run_fakeAldex(rdat, n_samples = 2000, scale.samples = scale_samps, test="t")
+  
+  new.sfit <- summary_aldex2(new.sfit)
+  new.sfit <- append_sig(new.sfit, function(x) sig_aldex2(x, pval=pval))
+  
   
   rrs <- list(dat=rdat, dfit=dfit, afit=afit)
   
@@ -74,11 +78,14 @@ aldexDeseq_analysis <- function(d, n, seq.depth, pval = 0.05, prob = .99){
   tp.sfit = sum(sfit$sig == TRUE & truth1 == TRUE)
   fp.sfit = sum(sfit$sig == TRUE & truth1 == FALSE)
   
+  tp.new.sfit = sum(new.sfit$sig == TRUE & truth1 == TRUE)
+  fp.new.sfit = sum(new.sfit$sig == TRUE & truth1 == FALSE)
+  
   fp.aldex = sum(afit$sig == TRUE & truth1 == FALSE)
   tp.aldex = sum(afit$sig == TRUE & truth1 == TRUE)
   
   
-  return(list("pval_deseq" = dfit$padj, "fp_deseq" = fp.deseq, "tp_deseq" = tp.deseq, "fp_sfit" = fp.sfit, "tp_sfit" = tp.sfit, "pval_aldex" = afit$padj, "fp_aldex" = fp.aldex, "tp_aldex" = tp.aldex))
+  return(list("pval_deseq" = dfit$padj, "fp_deseq" = fp.deseq, "tp_deseq" = tp.deseq, "fp_sfit" = fp.sfit, "tp_sfit" = tp.sfit, "pval_aldex" = afit$padj, "fp_aldex" = fp.aldex, "tp_aldex" = tp.aldex, "tp_new_sfit" = tp.new.sfit, "fp_new_sfit" = fp.new.sfit))
   
   #ggsave(p1, file.path("Results","aldex_deseq_failures.pdf"))
 }# end of function
@@ -89,11 +96,12 @@ model.names <- c("dfit"="DESeq2",
 model.name.levels <- c("DESeq2", "ALDEx2", "Scale Simulation (Relaxed)")
 
 
-vals = c(5,10,25,50,75,100, 125, 150, 200)
+vals = c(5,10,25,50,75,100, 125, 150, 200, 500)
 
 fdr.aldex = rep(NA, length(vals))
 fdr.deseq = rep(NA, length(vals))
 fdr.sfit = rep(NA, length(vals))
+fdr.new.sfit = rep(NA, length(vals))
 
 pval.aldex = matrix(NA, ncol = length(d)/2, nrow = length(vals))
 pval.deseq = matrix(NA, ncol = length(d)/2, nrow = length(vals))
@@ -107,6 +115,8 @@ for(i in 1:length(vals)){
   fdr.deseq[i] = res$fp_deseq/(res$fp_deseq + res$tp_deseq)
   fdr.sfit[i] = res$fp_sfit/(res$fp_sfit + res$tp_sfit)
   fdr.sfit[i] = ifelse((res$fp_sfit + res$tp_sfit) == 0, 0, fdr.sfit[i])
+  fdr.new.sfit[i] = res$fp_new_sfit/(res$fp_new_sfit + res$tp_new_sfit)
+  fdr.new.sfit[i] = ifelse((res$fp_new_sfit + res$tp_new_sfit) == 0, 0, fdr.new.sfit[i])
   
   pval.aldex[i,] = res$pval_aldex
   pval.deseq[i,] = res$pval_deseq
@@ -140,29 +150,29 @@ ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = metho
   theme(legend.title = element_blank())
 ggsave(file.path("results", "unacknowledged_bias.pdf"), height=3, width=6)
 
-fdr.all = data.frame(vals = rep(vals,3), fdr = c(c(fdr.aldex),c(fdr.deseq), c(fdr.sfit)), method = rep(c("ALDEx2", "DESeq2", "Scale Sim. (Relaxed)"), each = length(vals)))
+fdr.all = data.frame(vals = rep(vals,3), fdr = c(c(fdr.aldex),c(fdr.deseq), c(fdr.new.sfit)), method = rep(c("ALDEx2", "DESeq2", "Scale Sim. (Relaxed)"), each = length(vals)))
 fdr.all$method = as.factor(fdr.all$method)
 
 ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = method)) +
   geom_line(alpha = 1, lwd = 1.1) +
   theme_bw()+
-  xlim(c(0,200)) +
+  xlim(c(0,500)) +
   xlab("Sample Size") +
   ylab("False Discovery Rate") + 
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba")) + 
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba" )) + 
   scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
   theme(text=element_text(size=14)) + 
   geom_hline(yintercept=17/21, linetype="dashed", color = "grey") +
   theme(legend.title = element_blank()) +
   theme(legend.position = c(.70, .4))
-ggsave(file.path("results", "unacknowledged_bias_grant.pdf"), height=4, width=4.5)
+ggsave(file.path("results", "unacknowledged_bias_scaleSim.pdf"), height=4, width=4.5)
 
 
 
 ###Second, the augmented aldex simulation
 
 
-fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test = "bayes_glm", n_samples = 2000){
+fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test = "t", n_samples = 2000){
   dd <- length(d)/2
   truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])##testing if the mean is different
   truth2 <- (1:dd)[truth1]##Locations of the differences
@@ -179,49 +189,27 @@ fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test =
   afit <- summary_aldex2(afit)
   afit <- append_sig(afit, function(x) sig_aldex2(x, pval=pval))
   
-  upsilon = dd + 10
-  Gamma = diag(c(5,1))
-  Theta = matrix(0, dd-1, 2)
-  Omega = diag(dd)
-  G = cbind(diag(dd-1), -1)
-  Xi = G%*%Omega%*%t(G)
   
-  tfit.delta <- run_fakeAldex(rdat,
-                         upsilon = upsilon, Gamma = Gamma,
-                         Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000, total_model = "logNormal", mean_lnorm = 0, sd_lnorm = 1e-3, test=test)
-  tfit.naive <- run_fakeAldex(rdat,
-                         upsilon = upsilon, Gamma = Gamma,
-                         Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000,  total_model = "logNormal", mean_lnorm = 0, sd_lnorm = 1, test=test)
-  tfit.wk <- run_fakeAldex(rdat,
-                      upsilon = upsilon, Gamma = Gamma,
-                      Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000,  total_model = "logNormal", mean_lnorm = miniclo(sample.totals), sd_lnorm = .5, sample.totals = sample.totals, test=test)
-  tfit.coda <- run_fakeAldex(rdat,
-                           upsilon = upsilon, Gamma = Gamma,
-                           Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000,  total_model = "logNormal", mean_lnorm = 0, sd_lnorm = 10, test=test)
-  
-  ##tfit.gm <- run_fakeAldex(rdat,
-  ##                    upsilon = upsilon, Gamma = Gamma,
-  ##                    Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000, total_model = "gm", test=test)
-
-  if(test == "bayes_glm"){
-    tfit.delta <- summary_tram(tfit.delta, prob=prob)
-    tfit.naive <- summary_tram(tfit.naive, prob=prob)
-    tfit.wk <- summary_tram(tfit.wk, prob=prob)
-    tfit.coda <- summary_tram(tfit.coda, prob=prob)
-    tfit.delta <- append_sig(tfit.delta, sig_tram)
-    tfit.naive <- append_sig(tfit.naive, sig_tram)
-    tfit.wk <- append_sig(tfit.wk, sig_tram)
-    tfit.coda <- append_sig(tfit.coda, sig_tram)
-  } else{
-    tfit.delta <- summary_aldex2(tfit.delta)
-    tfit.naive <- summary_aldex2(tfit.naive)
-    tfit.wk <- summary_aldex2(tfit.wk)
-    tfit.coda <- summary_aldex2(tfit.coda)
-    tfit.delta <- append_sig(tfit.delta, function(x) sig_aldex2(x, pval=pval))
-    tfit.naive <- append_sig(tfit.naive, function(x) sig_aldex2(x, pval=pval))
-    tfit.wk <- append_sig(tfit.wk, function(x) sig_aldex2(x, pval=pval))
-    tfit.coda <- append_sig(tfit.coda, function(x) sig_aldex2(x, pval=pval))
+  scale_samps = matrix(NA, nrow = nrow(rdat), ncol = 2000)
+  for(i in 1:nrow(scale_samps)){
+    tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,.2)
+    scale_samps[i,] = rlnorm(2000, tmp, .6)
   }
+  
+  tfit.delta <- run_fakeAldex(rdat, n_samples = 2000, scale.samples = 1e-3, test=test)
+  tfit.naive <- run_fakeAldex(rdat, n_samples = 2000, scale.samples =  scale_samps, test=test)
+  tfit.wk <- run_fakeAldex(rdat, n_samples = 2000, scale.samples= t(sapply(miniclo(sample.totals), function(mu) {rlnorm(2000,mu,.25)})), test=test)
+  tfit.coda <- run_fakeAldex(rdat, n_samples = 2000, scale.samples = 10, test=test)
+  
+  tfit.delta <- summary_aldex2(tfit.delta)
+  tfit.naive <- summary_aldex2(tfit.naive)
+  tfit.wk <- summary_aldex2(tfit.wk)
+  tfit.coda <- summary_aldex2(tfit.coda)
+  tfit.delta <- append_sig(tfit.delta, function(x) sig_aldex2(x, pval=pval))
+  tfit.naive <- append_sig(tfit.naive, function(x) sig_aldex2(x, pval=pval))
+  tfit.wk <- append_sig(tfit.wk, function(x) sig_aldex2(x, pval=pval))
+  tfit.coda <- append_sig(tfit.coda, function(x) sig_aldex2(x, pval=pval))
+  
   
   rrs <- list(dat=rdat, dfit=dfit, afit=afit, tfit.delta = tfit.delta, tfit.naive = tfit.naive, tfit.wk = tfit.wk, tfit.coda = tfit.coda)
   ##rrs <- list(dat=rdat, dfit=dfit, afit=afit, tfit.naive = tfit.naive)
@@ -252,14 +240,14 @@ model.name.levels <- c("CoDA","Informed", "Relaxed",  "CLR", "ALDEx2", "DESeq2")
 # model.name.levels <- c("Relaxed", "ALDEx2", "DESeq2")
 
 
-fakeAldex.simulation(d, n = 50, seq.depth = 5000, test = "bayes_glm", n_samples = 2000)
+fakeAldex.simulation(d, n = 50, seq.depth = 5000, test = "t", n_samples = 2000)
 
 
-ggsave(file.path("results", "sim_matrixGraph.pdf"), height=4, width=7)
-ggsave(file.path("results", "sim_matrixGraph_grant.pdf"), height=4, width=12)
+ggsave(file.path("results", "sim_matrixGraph_20Apr.pdf"), height=4, width=7)
+ggsave(file.path("results", "sim_matrixGraph_grant_24Jan.pdf"), height=4, width=12)
 
 
-plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
+plot_gamma <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
                        thresh=.9,...){
   dd <- length(d)/2
   truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])##testing if the mean is different
@@ -277,14 +265,23 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
   X = as.character(coldata$Condition)
   
   alphaseq <- alpha
-  fit <-run_fakeAldex(rdat,test = "t", total_model = "logNormal", mean_lnorm = 0, sd_lnorm = alpha[1])
+  scale_samps = matrix(NA, nrow = nrow(rdat), ncol = 2000)
+  for(i in 1:nrow(scale_samps)){
+    tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,alpha[1])
+    scale_samps[i,] = rlnorm(2000, tmp, .6)
+  }
+  fit <-run_fakeAldex(rdat, n_samples = 2000, scale.samples = scale_samps, test="t")
   B <- matrix(NA, nrow = length(alpha), ncol = dd)
   pvals <- matrix(NA, nrow = length(alpha), ncol = dd)
   B[1,] <- fit$effect
   pvals[1,] <- fit$wi.ep
   if (length(alpha) > 1){
     for (i in 2:length(alpha)) {
-      tmp = run_fakeAldex(rdat,test = "t", total_model = "logNormal", mean_lnorm = 0, sd_lnorm = alpha[i])
+      for(j in 1:nrow(scale_samps)){
+        tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,alpha[i])
+        scale_samps[j,] = rlnorm(2000, tmp, .6)
+      }
+      tmp = run_fakeAldex(rdat, n_samples = 2000, scale.samples = scale_samps, test="t")
       B[i,] <- tmp$effect
       pvals[i,] <- tmp$wi.ep
     }
@@ -314,14 +311,90 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
     geom_hline(yintercept=0, color="red", linetype = "dashed") +
     theme_bw() +
     ylab("Effect Size") +
-    coord_cartesian(ylim = c(-3,2)) +
+    coord_cartesian(ylim = c(-1.5, .5)) +
+    scale_y_reverse() +
+    xlab(TeX("$\\gamma$")) +
+    theme(text = element_text(size=18))+
+    theme(legend.position = "none") 
+}
+plot_gamma(d, alpha = seq(1e-3,3,by=.2))
+
+ggsave(file.path("results", "sim_gammaGraph_20Apr22.pdf"), height=4, width=5)
+#ggsave(file.path("results", "sim_alphaGraph_grant.pdf"), height=4, width=7)
+
+plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
+                       thresh=.9,...){
+  dd <- length(d)/2
+  truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])##testing if the mean is different
+  truth2 <- (1:dd)[truth1]##Locations of the differences
+  dat <- create_true_abundances(d, n=n)
+  rdat <- resample_data(dat, seq.depth=seq.depth)
+  sample.totals=rowSums(dat[,-1])
+  
+  dd <- ncol(rdat)-1
+  
+  coldata <- rdat[,"Condition",drop=F]
+  countdata <- t(rdat[,-1,drop=F])
+  rownames(coldata) <- colnames(countdata) <- paste0("n", 1:ncol(countdata))
+  Y = as.matrix(countdata)
+  X = as.character(coldata$Condition)
+  
+  alphaseq <- alpha
+  scale_samps = matrix(NA, nrow = nrow(rdat), ncol = 2000)
+  for(i in 1:nrow(scale_samps)){
+    tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,0.2)
+    scale_samps[i,] = rlnorm(2000, tmp, alpha[1])
+  }
+  fit <-run_fakeAldex(rdat, n_samples = 2000, scale.samples = scale_samps, test="t")
+  B <- matrix(NA, nrow = length(alpha), ncol = dd)
+  pvals <- matrix(NA, nrow = length(alpha), ncol = dd)
+  B[1,] <- fit$effect
+  pvals[1,] <- fit$wi.ep
+  if (length(alpha) > 1){
+    for (i in 2:length(alpha)) {
+      for(j in 1:nrow(scale_samps)){
+        tmp = 0 + as.numeric(rdat[i,1])*rnorm(2000,0,0.2)
+        scale_samps[j,] = rlnorm(2000, tmp, alpha[i])
+      }
+      tmp = run_fakeAldex(rdat, n_samples = 2000, scale.samples = scale_samps, test="t")
+      B[i,] <- tmp$effect
+      pvals[i,] <- tmp$wi.ep
+    }
+  }
+  
+  
+  
+  P = pvals %>% as.data.frame %>%
+    as.data.frame() %>%
+    mutate("alpha" = alpha) %>%
+    dplyr::select(alpha, everything()) %>%
+    pivot_longer(cols = !alpha, names_to = "Sequence", values_to = "pval")
+  
+  B %>% 
+    as.data.frame() %>%
+    mutate("alpha" = alpha) %>%
+    dplyr::select(alpha, everything()) %>%
+    pivot_longer(cols = !alpha, names_to = "Sequence", values_to = "Effect") %>%
+    plyr::join(P, by = c("alpha", "Sequence")) %>%
+    mutate("Sequence" = sub("V", "", Sequence)) %>%
+    mutate("labl" = sub("V", "", Sequence)) %>%
+    mutate("labl" = ifelse(labl %in% c(3, 4, 15, 21), labl, NA)) %>%
+    ungroup() %>%
+    ggplot(aes(x=alpha, y = Effect, group=Sequence)) +
+    geom_line() +
+    gghighlight((pval <= 0.05), use_direct_label  = FALSE) +
+    gghighlight(!is.na(labl), unhighlighted_params = list(colour = NULL)) +
+    geom_hline(yintercept=0, color="red", linetype = "dashed") +
+    theme_bw() +
+    ylab("Effect Size") +
+    coord_cartesian(ylim = c(-3,1)) +
     scale_y_reverse() +
     xlab(TeX("$\\alpha$")) +
     theme(text = element_text(size=18))+
     theme(legend.position = "none") 
 }
-plot_alpha(d, alpha = seq(1e-3,5,by=.2))
+plot_alpha(d, alpha = seq(1e-3,5,by=0.5))
 
-ggsave(file.path("results", "sim_alphaGraph.pdf"), height=4, width=5)
-ggsave(file.path("results", "sim_alphaGraph_grant.pdf"), height=4, width=7)
+ggsave(file.path("results", "sim_alphaGraph_20Apr22.pdf"), height=4, width=5)
+#ggsave(file.path("results", "sim_alphaGraph_grant.pdf"), height=4, width=7)
 

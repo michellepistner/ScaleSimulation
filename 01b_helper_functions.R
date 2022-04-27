@@ -27,7 +27,7 @@ resample_data <- function(dat, seq.depth){
 ####Utility functions###############################################################
 ##Geometric mean
 gm <- function(x, na.rm = TRUE){
-  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+  exp(mean(log(x[x > 0]), na.rm=na.rm))
 }
 
 ##Testing for character vectors
@@ -80,15 +80,6 @@ sig_code <- function(sig, Taxa, truth){
   return(out)
 }
 
-vol_sphere <- function(dim, rad){
-  volume = (pi^(dim/2)/gamma(dim/2+1))
-  volume.hold = (pi^(3/2)/gamma(3/2+1))*(rad^3)
-  alpha = (volume.hold/volume)^(1/dim)
-  return(alpha)
-}
-
-
-
 ####Plotting functions##############################################################
 plot_count <- function(dat){
   gather(dat, Taxa, Count, -Condition) %>% 
@@ -129,42 +120,3 @@ plot_sig2 <- function(rrs, truth, ...){
     scale_fill_manual(values= c("black", "white", "grey", "white"))
 }
 
-squish_trans <- function(from, to, factor) {
-  
-  trans <- function(x) {
-    
-    if (any(is.na(x))) return(x)
-    
-    # get indices for the relevant regions
-    isq <- x > from & x < to
-    ito <- x >= to
-    
-    # apply transformation
-    x[isq] <- from + (x[isq] - from)/factor
-    x[ito] <- from + (to - from)/factor + (x[ito] - to)
-    
-    return(x)
-  }
-  
-  inv <- function(x) {
-    
-    if (any(is.na(x))) return(x)
-    
-    # get indices for the relevant regions
-    isq <- x > from & x < from + (to - from)/factor
-    ito <- x >= from + (to - from)/factor
-    
-    # apply transformation
-    x[isq] <- from + (x[isq] - from) * factor
-    x[ito] <- to + (x[ito] - (from + (to - from)/factor))
-    
-    return(x)
-  }
-  
-  # return the transformation
-  return(trans_new("squished", trans, inv))
-}
-
-logit <- function(x){
-  log(x/(1-x))
-}
