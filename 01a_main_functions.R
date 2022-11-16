@@ -356,6 +356,7 @@ GG <- function(obj, D){
 t.sampler <- function(nu.star, M.star, Xi.star, V.star){
   Sigma = rinvwishart(nu.star + 2*nrow(Xi.star), Xi.star)
   C = t(chol(Sigma))
+  mean = matrix(0, nrow = nrow(M.star), ncol = ncol(M.star))
   X = rmatnorm(1,mean, diag(nrow(M.star)), V.star)
   Y= C %*% X + M.star
   
@@ -431,8 +432,8 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
       lambda.par = fitc$Samples
       
       ##Finding the par and perp components of the priors
-      Theta.trans = GG(Theta.t, nrow(Xi.t))
-      Xi.trans = GG(Omega, nrow(Xi.t))
+      Theta.trans = GG(Theta.t, nrow(Omega))
+      Xi.trans = GG(Omega, nrow(Omega))
       
       for(i in 1:n_samples){
         nu.star = upsilon + D - 1

@@ -173,6 +173,7 @@ ggsave(file.path("results", "recreating_aldex2.pdf"), height=3, width=6)
 fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test = "t", n_samples = 2000){
   dd <- length(d)/2
   truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])##testing if the mean is different
+  truth2 <- (1:dd)[truth1]##Locations of the differences
   dat <- create_true_abundances(d, n=n)
   rdat <- resample_data(dat, seq.depth=seq.depth)
 

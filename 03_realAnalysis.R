@@ -65,6 +65,20 @@ otu_filtered_metadata <- data.frame(sample = colnames(otu_filtered)) %>%
 flow_filtered <- flow_filtered %>% 
   mutate(sample_id = factor(paste0(flow_filtered$day,"_",flow_filtered$vessel)))
 
+
+# Simple EDA: Relative abundance * flow -----------------------------------
+
+flow %>%
+  filter(day %in% c(1,14)) %>%
+  mutate(day = factor(day)) %>% 
+  ggplot(aes(x=day, y=count)) +
+  geom_boxplot(fill="darkgrey") +
+  theme_bw() +
+  ylab("Bacterial Cells per mL") +
+  xlab("Experiment Day")
+
+ggsave(file.path("results", "vessel_1_flow_variation.pdf"), height=4, width=5)
+
 # Set Priors  / data
 Y <- otu_filtered
 X <- model.matrix(~ base::I(vessel) + base::I(day) - 1,data = otu_filtered_metadata) %>% t()
@@ -425,3 +439,4 @@ ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = metho
   theme(legend.title = element_blank()) +
   theme(legend.position = c(.65, .825))
 ggsave(file.path("results", "unacknowledged_bias_realData.pdf"), height=4, width=4.5)
+
