@@ -10,8 +10,7 @@ create_true_abundances <- function(d, n){
     purrr::map(t) %>%
     do.call(rbind, .) %>%
     as.data.frame() %>%
-    cbind(Condition=factor(rep(c(1, 2), each=n)), .) %>%
-    #cbind(Condition=factor(rep(c("Pre", "Post"), each=n), levels = c("Pre", "Post")), .) %>%
+    cbind(Condition=factor(rep(c("Pre", "Post"), each=n), levels = c("Pre", "Post")), .) %>%
     `rownames<-`(., NULL)
   return(dat)
 }
@@ -30,14 +29,6 @@ gm <- function(x, na.rm = TRUE){
   exp(mean(log(x[x > 0]), na.rm=na.rm))
 }
 
-##Testing for character vectors
-is_charachter_vector = function (s) 
-{
-  re <- "^(\\-|\\+)?[[:digit:]]+(\\.)?[[:digit:]]*(e|L|\\+|\\-){0,2}[[:digit:]]*$"
-  any(!grepl(re, s))
-}
-
-
 append_sig <- function(fit, f){
   s <- f(fit)$category
   mutate(fit, sig=ifelse(category%in%s, TRUE, FALSE))
@@ -46,30 +37,6 @@ append_sig <- function(fit, f){
 strip_end_num <- function(x){
   x <- as.character(x)
   as.numeric(str_extract(x, "[[:digit:]]+"))
-}
-
-try_set_dims <- function(x){
-  if (length(x) ==0){
-    stop("Not Information provided to set dimension")
-  }
-  if (all(x[1]==x)) {
-    return(as.integer(x[1])) 
-  }else{
-    msg <- paste(x, collapse = ",")
-    msg <- paste("Dimension missmatch in arguments: [", msg, "]", sep="")
-    stop(msg)
-  } 
-}
-
-args_null <- function(par, argl, default){
-  if (is.null(argl[[par]])) return(default)
-  return(argl[[par]])
-}
-
-random_pibble_init <- function(Y){
-  N <- ncol(Y)
-  D <- nrow(Y)
-  t(driver::alr(t(Y)+runif(N*D)))
 }
 
 sig_code <- function(sig, Taxa, truth){
@@ -100,7 +67,7 @@ plot_count <- function(dat){
 plot_sig2 <- function(rrs, truth, ...){
   rrs$dat <- NULL
   names(rrs) <- model.names[names(rrs)]
-  bind_rows(rrs, .id="Model") %>% 
+  graph_df = bind_rows(rrs, .id="Model") %>% 
     dplyr::select(Model, category, sig) %>% 
     mutate(Taxa = category) %>% 
     mutate(Taxa=strip_end_num(Taxa)) %>% 
@@ -108,8 +75,9 @@ plot_sig2 <- function(rrs, truth, ...){
     mutate(Taxa=factor(Taxa), sigcode=factor(sigcode, 
                                              levels=c("TP", "TN", 
                                                       "FP", "FN"))) %>% 
-    mutate(Model=factor(Model, levels=model.name.levels)) %>% 
-    ggplot(aes(x=Taxa, y=Model)) +
+    mutate(Model=factor(Model, levels=model.name.levels))
+  rownames(graph_df) <- 1:nrow(graph_df)
+  ggplot(graph_df, aes(x=Taxa, y=Model)) +
     geom_tile_pattern(aes(fill=sigcode, pattern = sigcode), color="darkgrey",pattern_fill = 'grey',pattern_colour  = 'grey', pattern_density = 0.015) +
     theme_minimal() +
     theme(panel.grid = element_blank(), 
