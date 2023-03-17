@@ -157,7 +157,7 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     geom_hline(yintercept=0, color="red", linetype = "dashed") +
     theme_bw() +
     ylab("Effect Size") +
-    coord_cartesian(ylim = c(-10,6)) +
+    coord_cartesian(ylim = c(-4,2)) +
     scale_y_reverse() +
     xlab(TeX("$\\alpha$")) +
     theme(text = element_text(size=18))+
@@ -297,7 +297,7 @@ p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
         legend.key.size = unit(.825, "cm")) +
   scale_pattern_manual(values = c(TP = "none", TN = "none", FP = "none", FN = "stripe")) +
   scale_fill_manual(values= c("white", "#fdae61", "white", "#2b83ba")) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=16))
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 p2
 
@@ -323,7 +323,7 @@ seq.names = rownames(Y)
 fdr = matrix(NA,nrow = length(num.vessels), ncol = 4)
 fdr[,1] = num.vessels
 names(fdr) = c("num.vessels","relaxed","aldex2","deseq2")
-replicates = 10
+replicates = 25
 for(i in 1:length(num.vessels)){
   tmp.fdr = rep(0,3)
   for(k in 1:replicates){
