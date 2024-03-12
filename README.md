@@ -1,7 +1,7 @@
-# Scale Simulation
-Examples for "Scale Reliant Inference from Compositional Survey"
+# Scale Reliant Inference
+Examples for "Scale Reliant Inference"
 
-This repository contains all the code necessary to replicate the figures in *Scale Reliant Inference from Compositional Surveys* by Nixon, Letourneau, David, Mukherjee, and Silverman (2021+).
+This repository contains all the code necessary to replicate the figures in *Scale Reliant Inference* by Nixon, Letourneau, David, Lazar, Mukherjee, and Silverman (2021+).
 
 To run, first make sure the correct packages are installed. While most of packages are available on CRAN and/or Bioconductor, the `driver` package is available only on Github. To install:
 
