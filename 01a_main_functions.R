@@ -3,6 +3,7 @@
 ###DESeq2 master function for simulation study
 ###Input: OTU table with condition appended to it
 ###Output: A DESeq2 results function
+###Function used to run DESeq2 for the simulation only
 run_deseq2 <- function(dat){
   coldata <- dat[,"Condition",drop=F]
   countdata <- t(dat[,-1,drop=F])
@@ -59,9 +60,9 @@ sig_aldex2 <- function(s, pval=0.05){
 ####Augmented aldex functions####################################################
 
 ###Updated ALDEX clr function
-
+###Code taken from the aldex.clr.function from the ALDEx2 package
+###This is identical to the ALDEx2 package CLR function except lines 220-254
 aldex.clr.function <- function( reads, conds, mc.samples=128, denom="all", verbose=FALSE, useMC=FALSE, summarizedExperiment=FALSE, gamma = NULL) {
- ###This is identical to the ALDEx2 package CLR function except lines 223-251
   
   # INPUT
   # The 'reads' data.frame MUST have row
@@ -319,15 +320,61 @@ aldex.clr.function <- function( reads, conds, mc.samples=128, denom="all", verbo
   return(new("aldex.clr",reads=reads,mc.samples=mc.samples,conds=conds,denom=feature.subset,verbose=verbose,useMC=useMC,dirichletData=p,analysisData=l2p))
 }
 
+## Helper function to calculate log fold change from an aldex.clr object
+## Only supports two conditions
+aldex.lfc <- function(clr){
+  # Use clr conditions slot instead of input
+  if (is.vector(clr@conds)) {
+    conditions <- clr@conds
+  } else if (is.factor(clr@conds)) {
+    if (length(levels(clr@conds) == 2)) {
+      conditions <- clr@conds
+    }
+  } else if (is.matrix(clr@conds)){
+    stop("currently does not support > 2 conditions.")
+  } else {
+    stop("please check that the conditions parameter for aldex.clr is correct.")
+  }
+  
+  nr <- numFeatures(clr) # number of features
+  rn <- getFeatureNames(clr) # feature names
+  mc.s <- numMCInstances(clr)
+  p <- length(conditions)
+  # ---------------------------------------------------------------------
+  
+  # sanity check to ensure only two conditions passed to this function
+  conditions <- as.factor( conditions )
+  levels     <- levels( conditions )
+  
+  sets <- levels
+  setA <- which(conditions == sets[1])
+  setB <- which(conditions == sets[2])
+  
+  
+  ## we need to fill an array and calculate these statistics over the array
+  W.est <- array(NA, dim = c(nr, p, mc.s))
+  
+  for(i in 1:p){
+    W.est[,i,] <- getMonteCarloReplicate(clr, i)
+  }
+  print(paste0("Condition A is ", sets[1], " and condition B is ", sets[2], "."))
+  lfc <- rep(NA, mc.s)
+  lfc <- apply(W.est, MARGIN = 3, FUN = function(mat, setA, setB){rowMeans(mat[,setA]) - rowMeans(mat[,setB])}, setA =setA, setB = setB)
+  return(data.frame("lfc" = rowMeans(lfc), "sd" = apply(lfc,1,sd), "p2.5" = apply(lfc,1,quantile, probs = c(0.025)), "p97.5" = apply(lfc,1,quantile, probs = c(.975))))
+}
+
+## To run aldex2 with a scale model
+## Note: the aldex2 function (original) is a wrapper to aldex.clr, aldex.ttest, aldex.effect
+## We used this, but changed the aldex.clr function that we called to the one written above.
 run_fakeAldex <- function(dat, n_samples = 2000, gamma = NULL, denom = "all", ...){
   coldata <- dat[,"Condition",drop=F]
   countdata <- t(dat[,-1,drop=F])
   rownames(coldata) <- colnames(countdata) <- paste0("n", 1:ncol(countdata))
   fit <- aldex.clr.function(as.matrix(countdata), as.character(dat$Condition), mc.samples = n_samples, gamma = gamma)
-  
+  x.lfc <- aldex.lfc(fit)
   x.tt <- aldex.ttest(fit)
   x.effect <- aldex.effect(fit)
-  z <- data.frame(x.effect, x.tt, check.names=F)
+  z <- data.frame(x.effect, x.lfc, x.tt, check.names=F)
   
   return(z)
 }
@@ -353,6 +400,7 @@ GG <- function(obj, D){
   }
 }
 
+## See Gupta and Nagar: Matrix Variate Distribution for details on sampling from matrix-T.
 t.sampler <- function(nu.star, M.star, Xi.star, V.star){
   Sigma = rinvwishart(nu.star + 2*nrow(Xi.star), Xi.star)
   C = t(chol(Sigma))
@@ -461,6 +509,7 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
       mean_samp = rep(NA,N)
       sd_samp = rep(NA,N)
       sample.totals$count = log(sample.totals$count)
+      sample.totals$count = scale(sample.totals$count, scale = FALSE)
       
       ##Collapsing by sample to take the average and standard deviation
       for(j in 1:length(sample)){
@@ -506,16 +555,18 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
     }
   }
 
+  ## calculating the target estimator (lfc) from the samples of W.
   grp1 <- which(X[which(rownames(X) == covariate),] == 0)
   grp2 <- which(X[which(rownames(X) == covariate),] == 1)
   
   target.estimator <- apply(lambda, MARGIN = 3, FUN = function(mat, grp1, grp2){rowMeans(mat[,grp1]) - rowMeans(mat[,grp2])}, grp1 = grp1, grp2 = grp2)
   
   mean <- rowMeans(target.estimator)
+  sd <- apply(target.estimator, 1, FUN = sd)
   low <- apply(target.estimator, 1, FUN = quantile, probs = prob/2)
   high <- apply(target.estimator, 1, FUN = quantile, probs = 1-prob/2)
 
-  return(data.frame(mean = mean, low = low, high = high, category = rownames(Y)))
+  return(data.frame(mean = mean, sd = sd, low = low, high = high, category = rownames(Y)))
 }#end of function
 
 

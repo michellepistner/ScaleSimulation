@@ -9,9 +9,8 @@ library(ggpattern)
 library(cowplot)
 library(gghighlight)
 library(directlabels)
-library(latex2exp)
 
-set.seed(1234)
+set.seed(12345)
 
 ###Setting the data parameters for all simulations
 d <- c(4000, 4000, 4000, 4000, 4000, 400,400,400,400,4000,400,500,500,500,400,400,400,400,400,400, # Pre
@@ -20,7 +19,7 @@ d <- c(4000, 4000, 4000, 4000, 4000, 400,400,400,400,4000,400,500,500,500,400,40
 dd = length(d)/2
 
 ##Finding which are truly DE
-truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])##testing if the mean is different
+truth1 <- !(d[1:dd]==d[(dd+1):(2*dd)])
 
 
 ##Helper function for the ALDEx2 + DESeq2 analysis of FDR
@@ -62,7 +61,7 @@ model.names <- c("dfit"="DESeq2",
 model.name.levels <- c("DESeq2", "ALDEx2")
 
 ##Number of conditions to run it on
-vals = c(5,10,25,50,75,100, 125, 150, 200)
+vals = c(10,25,50,75,100, 125, 150, 200)
 
 fdr.aldex = rep(NA, length(vals))
 fdr.deseq = rep(NA, length(vals))
@@ -135,7 +134,7 @@ model.names <- c("ssrv"="SSRV (Geo. Mean)",
 model.name.levels <- c("SSRV (Geo. Mean)", "ALDEx2")
 
 
-vals = c(5,10,25,50,75,100, 125, 150, 200)
+vals = c(10,25 ,50,75,100, 125, 150, 200)
 
 fdr.aldex = rep(NA, length(vals))
 fdr.ssrv = rep(NA, length(vals))
@@ -188,15 +187,15 @@ fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test =
   afit <- append_sig(afit, function(x) sig_aldex2(x, pval=pval))
   
   ##SSRV models
-  ssrv.delta <- run_fakeAldex(rdat, n_samples = 2000, gamma = 1e-3)
+  ssrv.delta <- run_fakeAldex(rdat, n_samples = n_samples, gamma = 1e-3)
   ssrv.delta <- summary_aldex2(ssrv.delta)
   ssrv.delta <- append_sig(ssrv.delta, function(x) sig_aldex2(x, pval = pval))
   
-  ssrv.noise <- run_fakeAldex(rdat, n_samples = 2000, gamma = .5)
+  ssrv.noise <- run_fakeAldex(rdat, n_samples = n_samples, gamma = .5)
   ssrv.noise <- summary_aldex2(ssrv.noise)
   ssrv.noise <- append_sig(ssrv.noise, function(x) sig_aldex2(x, pval = pval))
   
-  ssrv.coda <- run_fakeAldex(rdat, n_samples = 2000, gamma = 10)
+  ssrv.coda <- run_fakeAldex(rdat, n_samples = n_samples, gamma = 10)
   ssrv.coda <- summary_aldex2(ssrv.coda)
   ssrv.coda <- append_sig(ssrv.coda, function(x) sig_aldex2(x, pval = pval))
   
@@ -224,7 +223,7 @@ model.name.levels <- c("CoDA", "Relaxed",  "CLR", "ALDEx2", "DESeq2")
 fakeAldex.simulation(d, n = 50, seq.depth = 5000, test = "t", n_samples = 2000)
 
 ##Saving the graph
-ggsave(file.path("results", "sim_matrixGraph.pdf"), height=4, width=4.5)
+ggsave(file.path("results", "sim_matrixGraph.pdf"), height=4, width=6)
 
 
 plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
@@ -244,14 +243,14 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
   fit <-run_fakeAldex(rdat, n_samples = 2000, gamma = alpha[1])
   B <- matrix(NA, nrow = length(alpha), ncol = dd)
   pvals <- matrix(NA, nrow = length(alpha), ncol = dd)
-  B[1,] <- fit$effect ##Creating and effect size: mean adjusted by length of CI
+  B[1,] <- fit$lfc/fit$sd ##Creating and effect size: mean adjusted by length of CI
   pvals[1,] <- ifelse(fit$we.eBH < 0.05, TRUE, FALSE)
   
   ##Now repeating for the rest of the values of alpha
   if (length(alpha) > 1){
     for (i in 2:length(alpha)) {
       tmp = run_fakeAldex(rdat, n_samples = 2000, gamma = alpha[i])
-      B[i,] <- tmp$effect
+      B[i,] <- tmp$lfc/tmp$sd
       pvals[i,] <- ifelse(tmp$we.eBH < 0.05, TRUE, FALSE)
     }
   }
@@ -273,6 +272,7 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
     mutate("Sequence" = sub("V", "", Sequence)) %>%
     mutate("labl" = sub("V", "", Sequence)) %>%
     mutate("labl" = ifelse(labl %in% c(3, 4, 15, 20), labl, NA)) %>%
+    mutate("Effect" = -1*Effect) %>%
     ggplot(aes(x=alpha, y = Effect, group=Sequence)) +
     geom_line() +
     gghighlight((pval == TRUE), use_direct_label  = FALSE) +
@@ -280,14 +280,14 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
     geom_hline(yintercept=0, color="red", linetype = "dashed") +
     theme_bw() +
     ylab("Effect Size") +
-    coord_cartesian(ylim = c(-10,6)) +
+    coord_cartesian(ylim = c(-6,10)) +
     scale_y_reverse() +
-    xlab(TeX("$\\alpha$")) +
+    xlab(expression(alpha)) +
     theme(text = element_text(size=18))+
     theme(legend.position = "none") 
 }
 
 ##Running, plotting, and saving
-plot_alpha(d, alpha = seq(1e-3,4,by=.1))
+plot_alpha(d, alpha = seq(1e-3,2,by=.1))
 
-ggsave(file.path("results", "sim_alphaGraph.pdf"), height=4, width=5)
+ggsave(file.path("results", "sim_alphaGraph.pdf"), height=3, width=6)

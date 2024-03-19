@@ -11,7 +11,8 @@ library(cowplot)
 library(directlabels)
 library(matrixNormal)
 library(ggpattern)
-library(latex2exp)
+library(LaplacesDemon)
+
 
 set.seed(1234)
 
@@ -36,16 +37,14 @@ flow <- read.csv(file=file.path("data", "counts_with_batch.csv"), header=TRUE) %
 
 # preprocess data ---------------------------------------------------------
 
-# filter samples
-otu %>% colSums() %>% ecdf() %>% base::plot(xlim=c(0,50000))
-otu <- otu[,colSums(otu) > 10000] 
-
 # Just take data from days 1 and 14 (only Hr4 from day 14) -- notice there are two sets from day 14
 samples_to_keep <- str_subset(sample_names(ps), "^Day(1|14).Hr4\\.")
 otu <- otu[,samples_to_keep]
 flow_filtered <- filter(flow, day %in% c(1, 14))
 
-(rowSums(otu > 3)/ncol(otu)) %>% ecdf  %>% base::plot(xlim=c(0,0.4))
+# Filtering out taxa with < 2500 counts across all samples
+# Putting these filtered taxa into an "other" category
+
 otu %>% rowSums() %>% ecdf() %>% base::plot() %>% abline(v=2500)
 to_amalgamate <- rowSums(otu) < 2500
 tmp <- colSums(otu[to_amalgamate,])
@@ -79,6 +78,17 @@ flow %>%
 
 ggsave(file.path("results", "vessel_1_flow_variation.pdf"), height=4, width=5)
 
+# Subsetting the flow data 
+
+flow_filtered_agg = flow_filtered %>%
+  filter(vessel %in% c(3,4,5,6,7,8)) %>%
+  dplyr::select(day, vessel, count, sample_id) %>%
+  group_by(day, vessel, sample_id) %>%
+  mutate(samp.var = sd(count)) %>%
+  mutate(count = mean(count)) %>%
+  ungroup() %>%
+  unique()
+
 # Set Priors  / data
 Y <- otu_filtered
 X <- model.matrix(~ base::I(vessel) + base::I(day) - 1,data = otu_filtered_metadata) %>% t()
@@ -87,7 +97,7 @@ X <- model.matrix(~ base::I(vessel) + base::I(day) - 1,data = otu_filtered_metad
 options(ggrepel.max.overlaps = Inf)
 plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
                        thresh=.9, upsilon = NULL, Theta = NULL, 
-                       Gamma = NULL, Omega = NULL, Xi = NULL, total_model = "unif", sample.totals = NULL, sample = NULL, prob=.975, mean_lnorm = NULL, sd_lnorm = NULL, ...){
+                       Gamma = NULL, Omega = NULL, Xi = NULL, total_model = "unif", sample.totals = NULL, sample = NULL, prob=.05, mean_lnorm = NULL, sd_lnorm = NULL, ...){
   dd <- nrow(Y)
   alphaseq <- alpha
   
@@ -113,11 +123,11 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
   ##Fitting and extracting results for the first alpha
   fit <-ssrv.mln(as.matrix(Y),X,covariate = "base::I(day)14",
                             upsilon = upsilon, Gamma = Gamma,
-                            Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, sd_lnorm  = sqrt(alpha[1]^2/2),mean_lnorm = mean_lnorm, total_model = "logNormal", sample.totals =  sample.totals, sample = sample)
+                            Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, sd_lnorm  = sqrt(alpha[1]^2/2),mean_lnorm = mean_lnorm, total_model = "logNormal", sample.totals =  sample.totals, sample = sample, prob = prob)
 
   B <- matrix(NA, nrow = length(alpha), ncol = dd)
   pvals <- matrix(NA, nrow = length(alpha), ncol = dd)
-  B[1,] <- fit$mean/(fit$high - fit$low)
+  B[1,] <- fit$mean/(fit$sd)
   pvals[1,] <- ifelse(sign(fit$low) == sign(fit$high), 1, 0)
   
   ##Repeating
@@ -125,8 +135,8 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     for (i in 2:length(alpha)) {
       tmp = ssrv.mln(as.matrix(Y),X,covariate = "base::I(day)14",
                                   upsilon = upsilon, Gamma = Gamma,
-                                  Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, sd_lnorm  = sqrt(alpha[i]^2/2),mean_lnorm = mean_lnorm,  total_model = "logNormal", sample.totals =  sample.totals, sample = sample)
-      B[i,] <- tmp$mean/(tmp$high - tmp$low)
+                                  Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 15000, sd_lnorm  = sqrt(alpha[i]^2/2),mean_lnorm = mean_lnorm,  total_model = "logNormal", sample.totals =  sample.totals, sample = sample, prob = prob)
+      B[i,] <- tmp$mean/(tmp$sd)
       pvals[i,] <- ifelse(sign(tmp$low) == sign(tmp$high), 1, 0)
       }
   }
@@ -137,7 +147,7 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     dplyr::select(alpha, everything()) %>%
     pivot_longer(cols = !alpha, names_to = "Sequence", values_to = "pval")
   
-  topValues <- colSums(pvals)[order(colSums(pvals), decreasing = TRUE)[1:10]]
+  topValues <- colSums(pvals)[order(colSums(pvals), decreasing = TRUE)[1:5]]
   taxaToHighlight <- which(colSums(pvals) %in% topValues)
     
   p1 = B %>% 
@@ -159,7 +169,7 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     ylab("Effect Size") +
     coord_cartesian(ylim = c(-4,2)) +
     scale_y_reverse() +
-    xlab(TeX("$\\alpha$")) +
+    xlab(expression(tau)) +
     theme(text = element_text(size=18))+
     theme(legend.position = "none") 
     
@@ -167,16 +177,8 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     return(list(p1 = p1))
 }
 
-flow_filtered_agg = flow_filtered %>%
-  filter(vessel %in% c(3,4,5,6,7,8)) %>%
-  dplyr::select(day, vessel, count, sample_id) %>%
-  group_by(day, vessel, sample_id) %>%
-  mutate(samp.var = sd(count)) %>%
-  mutate(count = mean(count)) %>%
-  ungroup() %>%
-  unique()
 
-plots = plot_alpha(Y,X, alpha=c(.1, .25, .5,1,  seq(2, 10, by=0.25)), total_model = "logNormal", mean_lnorm = rep(c(log(1),log(4)), each = 6), sample = 1:12, prob = .975)
+plots = plot_alpha(Y,X, alpha=c(.1, .25, .5,1,  seq(2, 10, by=0.25)), total_model = "logNormal", mean_lnorm = rep(c(log(1),log(4)), each = 6), sample = 1:12, prob = .05)
 plots$p1
 ggsave(file.path("results", "realData_alpha.pdf"), height=4, width=7)
 
@@ -199,7 +201,6 @@ Theta <- G %*% Theta.t
 fit_pim <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[7],
                                upsilon = upsilon, Gamma = Gamma,
                                Theta = Theta, Omega = Omega, Xi = Xi, Theta.t = Theta.t, n_samples = 15000, total_model = "pim", prob = 0.05)
-
 
 
 fit_design <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[7],
@@ -227,11 +228,11 @@ deseq_fit = results(dds)
 deseq_results = deseq_fit %>%
   as.data.frame() %>% 
   rownames_to_column("category") %>% 
-  dplyr::select(category, log2FoldChange, padj, lfcSE) %>% 
+  dplyr::select(category, log2FoldChange, pvalue, lfcSE) %>% 
   mutate(low = log2FoldChange -1.96*lfcSE, 
          high = log2FoldChange + 1.96*lfcSE) %>% 
   mutate(mean=log2FoldChange) %>%
-  filter(padj < .05)
+  filter(pvalue < .05)
 deseq_results
 
 ###Aldex2 now
@@ -240,9 +241,9 @@ aldex_fit <- aldex(Y,mmX,"glm",mc.samples = 1000, denom = "all")
 
 aldex_results = aldex_fit %>% 
   rownames_to_column("category") %>%
-  dplyr::select(category,model.base..I.day.14.t.value, model.base..I.day.14.Pr...t.., model.base..I.day.14.Pr...t...BH) %>%
-  mutate(pval = model.base..I.day.14.Pr...t..) %>%
-  mutate(padj = model.base..I.day.14.Pr...t...BH) %>%
+  dplyr::select(category,base..I.day.14.t.val, base..I.day.14.pval, base..I.day.14.pval.padj) %>%
+  mutate(pval = base..I.day.14.pval) %>%
+  mutate(padj = base..I.day.14.pval.padj) %>%
   filter(pval < .05)
 aldex_results
 
@@ -302,7 +303,7 @@ p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
 p2
 
 
-ggsave(file.path("results", "model_comparison_flowData.pdf"), height=4, width=5)
+ggsave(file.path("results", "model_comparison_flowData.pdf"), height=3, width=9)
 
 
 
@@ -312,9 +313,6 @@ ggsave(file.path("results", "model_comparison_flowData.pdf"), height=4, width=5)
 ##num vessels
 
 num.vessels = c(6, 10,15,25,30,40,50)
-
-size.day1 = colSums(otu_filtered[,1:6])
-size.day14 = colSums(otu_filtered[,7:12])
   
 otu_filtered.day1 = otu_filtered[,1:6]
 otu_filtered.day14 = otu_filtered[,7:12]
@@ -322,32 +320,52 @@ otu_filtered.day14 = otu_filtered[,7:12]
 seq.names = rownames(Y)
 fdr = matrix(NA,nrow = length(num.vessels), ncol = 4)
 fdr[,1] = num.vessels
-names(fdr) = c("num.vessels","relaxed","aldex2","deseq2")
+colnames(fdr) = c("num.vessels","relaxed","aldex2","deseq2")
+
+## num false positives
+fp = matrix(NA,nrow = length(num.vessels), ncol = 4)
+fp[,1] = num.vessels
+colnames(fp) = c("num.vessels","relaxed","aldex2","deseq2")
+
+## sensitivity
+sen = matrix(NA,nrow = length(num.vessels), ncol = 4)
+sen[,1] = num.vessels
+colnames(sen) = c("num.vessels","relaxed","aldex2","deseq2")
+
+## type-ii error
+typeii = matrix(NA,nrow = length(num.vessels), ncol = 4)
+typeii[,1] = num.vessels
+colnames(typeii) = c("num.vessels","relaxed","aldex2","deseq2")
+
 replicates = 25
 for(i in 1:length(num.vessels)){
   tmp.fdr = rep(0,3)
+  tmp.fp = rep(0,3)
+  tmp.sen = rep(0,3)
+  tmp.typeii = rep(0,3)
+  
   for(k in 1:replicates){
     if(num.vessels[i] != 6){
-      vessels.used = sample(1:6, num.vessels[i],replace = TRUE)
+      vessels.used = sample(3:8, num.vessels[i],replace = TRUE)
     } else{
-      vessels.used = sample(1:6, num.vessels[i],replace = FALSE)
+      vessels.used = sample(3:8, num.vessels[i],replace = FALSE)
     }
-    otu.day1 = matrix(nrow = length(seq.names))
-    otu.day14 = matrix(nrow = length(seq.names))
+    
+    # "-2" because the vessel numbers are 3-8
+    otu.day1 = otu_filtered.day1[,c(vessels.used-2)]
+    otu.day14 = otu_filtered.day14[,c(vessels.used-2)]
+    
     flow_filtered_rep = c()
-    for(j in 1:num.vessels[i]){
-      otu.day1 = cbind(otu.day1, c(rmultinom(1,size.day1[vessels.used[j]], otu_filtered.day1[,vessels.used[j]])))
-      otu.day14 = cbind(otu.day14, c(rmultinom(1,size.day14[vessels.used[j]], otu_filtered.day14[,vessels.used[j]])))
-      
+    for(j in 1:num.vessels[i]){  
       tmp = flow_filtered %>% filter(vessel == vessels.used[j]) %>%
         mutate(vessel = j) %>%
         mutate(sample_id = paste0(vessel, "_day", day))
       flow_filtered_rep = rbind(flow_filtered_rep, tmp)
     }
-    names(otu.day1) = paste0("vessel_", 1:num.vessels[i], "_day1")
-    names(otu.day14) = paste0("vessel_", 1:num.vessels[i], "_day1")
+    colnames(otu.day1) = paste0("vessel_", 1:num.vessels[i], "_day1")
+    colnames(otu.day14) = paste0("vessel_", 1:num.vessels[i], "_day14")
     
-    Y = cbind(otu.day1[,-1],otu.day14[,-1])
+    Y = cbind(otu.day1,otu.day14)
     rownames(Y) = seq.names
       
     X.day1 = rbind(diag(num.vessels[i]), rep(0,num.vessels[i]))
@@ -364,21 +382,27 @@ for(i in 1:length(num.vessels)){
     G = cbind(diag(nrow(Y)-1), -1)
     Xi = G%*%Omega%*%t(G)
 
-    fit_gs <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[7],
+    fit_gs <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[nrow(X)],
                                   upsilon = upsilon, Gamma = Gamma,
-                                  Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000, total_model = "flow", sample.totals =flow_filtered_rep, sample = c(paste0( 1:num.vessels[i], "_day1"),paste0(1:num.vessels[i], "_day14")))
+                                  Theta = Theta, Omega = Omega, Xi = Xi, prob = 0.05, n_samples = 2000, total_model = "flow", sample.totals =flow_filtered_rep, sample = c(paste0( 1:num.vessels[i], "_day1"),paste0(1:num.vessels[i], "_day14")))
     
     
-    fit_unif <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[7],
+    fit_unif <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[nrow(X)],
                                     upsilon = upsilon, Gamma = Gamma,
-                                    Theta = Theta, Omega = Omega, Xi = Xi, n_samples = 2000,  total_model = "logNormal",sd_lnorm = sqrt(1^2/2), mean_lnorm= rep(c(log(1),log(4)), each = num.vessels[i]),  sample = 1:(2*num.vessels[i]))
+                                    Theta = Theta, Omega = Omega, Xi = Xi, prob = 0.05, n_samples = 2000,  total_model = "logNormal",sd_lnorm = sqrt(0.5^2/2), mean_lnorm= rep(c(log(1),log(4)), each = num.vessels[i]),  sample = 1:(2*num.vessels[i]))
     
     sig_tram_gs = sig_tram(fit_gs)
     truth.pos = sig_tram_gs$category
+    truth.neg = !(fit_gs$category %in% truth.pos)
     
     sig_tram_unif = sig_tram(fit_unif)
+    sig_tram_unif_neg <- fit_unif %>%
+      filter(sign(high) != sign(low))
     
     tmp.fdr[1] = tmp.fdr[1] + ifelse(nrow(sig_tram_unif) > 0, sum(!(sig_tram_unif$category %in% truth.pos))/nrow(sig_tram_unif), 0)
+    tmp.fp[1] = tmp.fp[1] + sum(!(sig_tram_unif$category %in% truth.pos))
+    tmp.sen[1] = tmp.sen[1] + ifelse(nrow(sig_tram_unif) > 0, sum((sig_tram_unif$category %in% truth.pos))/length(truth.pos), 0)
+    tmp.typeii[1] = tmp.typeii[1] + ifelse(nrow(sig_tram_unif) > 0, sum((sig_tram_unif_neg$category %in% truth.pos))/length(truth.pos), 0)
     
     X.modelMat = t(X) %>% data.frame() %>% lapply(. %>% as.factor) %>% data.frame()
     
@@ -393,12 +417,26 @@ for(i in 1:length(num.vessels)){
     deseq_results = deseq_fit %>%
       as.data.frame() %>% 
       rownames_to_column("category") %>% 
-      dplyr::select(category, log2FoldChange, padj, lfcSE) %>% 
+      dplyr::select(category, log2FoldChange, pvalue, lfcSE) %>% 
       mutate(low = log2FoldChange -1.96*lfcSE, 
              high = log2FoldChange + 1.96*lfcSE) %>% 
       mutate(mean=log2FoldChange) %>%
-      filter(padj < .05)
+      filter(pvalue < .05)
+    
+    deseq_results_neg = deseq_fit %>%
+      as.data.frame() %>% 
+      rownames_to_column("category") %>% 
+      dplyr::select(category, log2FoldChange, pvalue, lfcSE) %>% 
+      mutate(low = log2FoldChange -1.96*lfcSE, 
+             high = log2FoldChange + 1.96*lfcSE) %>% 
+      mutate(mean=log2FoldChange) %>%
+      filter(pvalue > .05)
+    
     tmp.fdr[3] = tmp.fdr[3] + ifelse(nrow(deseq_results) > 0, sum(!(deseq_results$category %in% truth.pos))/nrow(deseq_results), 0)
+    tmp.fp[3] = tmp.fp[3] + sum(!(deseq_results$category %in% truth.pos))
+    tmp.sen[3] = tmp.sen[3] + ifelse(nrow(deseq_results) > 0, sum((deseq_results$category %in% truth.pos))/length(truth.pos), 0)
+    tmp.typeii[3] = tmp.typeii[3] + ifelse(nrow(deseq_results) > 0, sum((deseq_results_neg$category %in% truth.pos))/length(truth.pos), 0)
+    
     
     ###Aldex2 now
     
@@ -407,21 +445,46 @@ for(i in 1:length(num.vessels)){
     
     aldex_results = aldex_fit %>% 
       rownames_to_column("category") %>%
-      dplyr::select(category,model.base..I.day.14.t.value, model.base..I.day.14.Pr...t.., model.base..I.day.14.Pr...t...BH) %>%
-      mutate(pval = model.base..I.day.14.Pr...t..) %>%
-      mutate(padj = model.base..I.day.14.Pr...t...BH) %>%
+      dplyr::select(category,base..I.day.14.t.val, base..I.day.14.pval, base..I.day.14.pval.padj) %>%
+      mutate(pval = base..I.day.14.pval) %>%
+      mutate(padj = base..I.day.14.pval.padj) %>%
       filter(pval < .05)
+    
+    
+    aldex_results_neg = aldex_fit %>% 
+      rownames_to_column("category") %>%
+      dplyr::select(category,base..I.day.14.t.val, base..I.day.14.pval, base..I.day.14.pval.padj) %>%
+      mutate(pval = base..I.day.14.pval) %>%
+      mutate(padj = base..I.day.14.pval.padj) %>%
+      filter(pval > .05)
     tmp.fdr[2] = tmp.fdr[2] + ifelse(nrow(aldex_results) > 0, sum(!(aldex_results$category %in% truth.pos))/nrow(aldex_results), 0)
+    tmp.fp[2] = tmp.fp[2] + sum(!(aldex_results$category %in% truth.pos))
+    tmp.sen[2] = tmp.sen[2] + ifelse(nrow(aldex_results) > 0, sum((aldex_results$category %in% truth.pos))/length(truth.pos), 0)
+    tmp.typeii[2] = tmp.typeii[2] + ifelse(nrow(aldex_results) > 0, sum((aldex_results_neg$category %in% truth.pos))/length(truth.pos), 0)
+    
   }
+  ## filling inthe data frames
   fdr[i,2] = tmp.fdr[1]/replicates
   fdr[i,3] = tmp.fdr[2]/replicates
   fdr[i,4] = tmp.fdr[3]/replicates
+  
+  fp[i,2] = tmp.fp[1]/replicates
+  fp[i,3] = tmp.fp[2]/replicates
+  fp[i,4] = tmp.fp[3]/replicates
+  
+  sen[i,2] = tmp.sen[1]/replicates
+  sen[i,3] = tmp.sen[2]/replicates
+  sen[i,4] = tmp.sen[3]/replicates
+  
+  typeii[i,2] = tmp.typeii[1]/replicates
+  typeii[i,3] = tmp.typeii[2]/replicates
+  typeii[i,4] = tmp.typeii[3]/replicates
   
   print(i)
 }
 
 
-fdr.all = data.frame(vals = rep(num.vessels,3), fdr = c(c(fdr[,3]),c(fdr[,4]), c(fdr[,2])), method = rep(c("ALDEx2", "DESeq2", "SSRV (Design)"), each = length(num.vessels)))
+fdr.all = data.frame(vals = rep(num.vessels,3), fdr = c(c(typeii[,3]),c(typeii[,4]), c(typeii[,2])), method = rep(c("ALDEx2", "DESeq2", "SSRV (Design)"), each = length(num.vessels)))
 
 fdr.all$method = as.factor(fdr.all$method)
 
@@ -431,12 +494,30 @@ ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = metho
   xlim(c(6,50)) +
   ylim(c(0,1))+
   xlab("Number of Vessels per Condition") +
+  ylab("Type-II Error Rate") + 
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
+  theme(text=element_text(size=14)) + 
+  theme(legend.title = element_blank()) +
+  theme(legend.position = c(.65, .825))
+ggsave(file.path("results", "unacknowledged_bias_realData-typeii.pdf"), height=4, width=4.5)
+
+fdr.all = data.frame(vals = rep(num.vessels,3), fdr = c(c(fdr[,3]),c(fdr[,4]), c(fdr[,2])), method = rep(c("ALDEx2", "DESeq2", "SSRV (Design)"), each = length(num.vessels)))
+
+fdr.all$method = as.factor(fdr.all$method)
+
+ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = method)) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw()+
+  xlim(c(6,50)) +
+  ylim(c(0,.225))+
+  geom_hline(aes(yintercept = 3/31), col = "red", lty = "dashed")+
+  xlab("Number of Vessels per Condition") +
   ylab("False Discovery Rate") + 
   scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba")) + 
   scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
   theme(text=element_text(size=14)) + 
-  geom_hline(yintercept=15/32, linetype="dashed", color = "grey") +
   theme(legend.title = element_blank()) +
-  theme(legend.position = c(.65, .825))
-ggsave(file.path("results", "unacknowledged_bias_realData.pdf"), height=4, width=4.5)
+  theme(legend.position = c(.65, .725))
+ggsave(file.path("results", "unacknowledged_bias_realData-fdr.pdf"), height=4, width=4.5)
 
