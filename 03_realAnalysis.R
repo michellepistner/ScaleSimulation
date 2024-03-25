@@ -165,8 +165,9 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     gghighlight((pval == TRUE), use_direct_label  = FALSE) +
     gghighlight(!is.na(labl), unhighlighted_params = list(colour = NULL)) +
     geom_hline(yintercept=0, color="red", linetype = "dashed") +
+    geom_vline(xintercept = 0.5, color = "black", linetype = "dotted") +
     theme_bw() +
-    ylab("Effect Size") +
+    ylab("Standardized LFC") +
     coord_cartesian(ylim = c(-4,2)) +
     scale_y_reverse() +
     xlab(expression(tau)) +

@@ -279,7 +279,7 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
     gghighlight(!is.na(labl), unhighlighted_params = list(colour = NULL)) +
     geom_hline(yintercept=0, color="red", linetype = "dashed") +
     theme_bw() +
-    ylab("Effect Size") +
+    ylab("Standardized LFC") +
     coord_cartesian(ylim = c(-6,10)) +
     scale_y_reverse() +
     xlab(expression(alpha)) +
