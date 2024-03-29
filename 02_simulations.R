@@ -186,20 +186,12 @@ fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test =
   afit <- summary_aldex2(afit)
   afit <- append_sig(afit, function(x) sig_aldex2(x, pval=pval))
   
-  ##SSRV models
-  ssrv.delta <- run_fakeAldex(rdat, n_samples = n_samples, gamma = 1e-3)
-  ssrv.delta <- summary_aldex2(ssrv.delta)
-  ssrv.delta <- append_sig(ssrv.delta, function(x) sig_aldex2(x, pval = pval))
-  
+  ##SSRV model
   ssrv.noise <- run_fakeAldex(rdat, n_samples = n_samples, gamma = .5)
   ssrv.noise <- summary_aldex2(ssrv.noise)
   ssrv.noise <- append_sig(ssrv.noise, function(x) sig_aldex2(x, pval = pval))
   
-  ssrv.coda <- run_fakeAldex(rdat, n_samples = n_samples, gamma = 10)
-  ssrv.coda <- summary_aldex2(ssrv.coda)
-  ssrv.coda <- append_sig(ssrv.coda, function(x) sig_aldex2(x, pval = pval))
-  
-  rrs <- list(dat=rdat, dfit = dfit, afit = afit, ssrv.delta = ssrv.delta, ssrv.noise = ssrv.noise, ssrv.coda = ssrv.coda)
+  rrs <- list(dat=rdat, dfit = dfit, afit = afit,  ssrv.noise = ssrv.noise)
   p1 <- plot_count(dat)
   p2 <- plot_sig2(rrs, truth=truth2)
   p1 <- p1+theme(axis.title.x = element_blank(), 
@@ -207,24 +199,20 @@ fakeAldex.simulation <- function(d, n, seq.depth, pval = 0.05, prob = .9, test =
                  axis.ticks.x=element_blank(),
                  text = element_text(size=14))
   p <- plot_grid(p1, p2, nrow=2, align="v", rel_heights=c(1.7, 1))
-  p
 }# end of function
 
 
 ##Models graphed
 model.names <- c("dfit"="DESeq2",
                  "afit"="ALDEx2",
-                 "ssrv.delta" = "CLR",
-                 "ssrv.noise"= "Relaxed",
-                 "ssrv.coda" = "CoDA")
-model.name.levels <- c("CoDA", "Relaxed",  "CLR", "ALDEx2", "DESeq2")
+                 "ssrv.noise"= "Relaxed")
+model.name.levels <- c( "Relaxed", "ALDEx2", "DESeq2")
 
 ##Running the simulation. Output is a graph
-fakeAldex.simulation(d, n = 50, seq.depth = 5000, test = "t", n_samples = 2000)
+p <- fakeAldex.simulation(d, n = 50, seq.depth = 5000, test = "t", n_samples = 2000)
 
-##Saving the graph
-ggsave(file.path("results", "sim_matrixGraph.pdf"), height=4, width=6)
-
+## Saving the graph
+ggsave(file.path("results", "sim_matrixGraph.pdf"), plot = p, height=4, width=6)
 
 plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
                        thresh=.9,...){
@@ -284,10 +272,11 @@ plot_alpha <- function(d, n=50, seq.depth = 5000, alpha=seq(.01, 25, by=.5),
     scale_y_reverse() +
     xlab(expression(alpha)) +
     theme(text = element_text(size=18))+
-    theme(legend.position = "none") 
+    theme(legend.position = "none") +
+    theme(plot.margin=grid::unit(c(0.5,0.5,0.5,0.5), "mm"))
 }
 
 ##Running, plotting, and saving
 plot_alpha(d, alpha = seq(1e-3,2,by=.1))
 
-ggsave(file.path("results", "sim_alphaGraph.pdf"), height=3, width=6)
+ggsave(file.path("results", "sim_alphaGraph.pdf"), height=4, width=5)

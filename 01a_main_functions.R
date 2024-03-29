@@ -400,16 +400,6 @@ GG <- function(obj, D){
   }
 }
 
-## See Gupta and Nagar: Matrix Variate Distribution for details on sampling from matrix-T.
-t.sampler <- function(nu.star, M.star, Xi.star, V.star){
-  Sigma = rinvwishart(nu.star + 2*nrow(Xi.star), Xi.star)
-  C = t(chol(Sigma))
-  mean = matrix(0, nrow = nrow(M.star), ncol = ncol(M.star))
-  X = rmatnorm(1,mean, diag(nrow(M.star)), V.star)
-  Y= C %*% X + M.star
-  
-  return(Y)
-}
  
 ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL, 
                                Gamma = NULL, Omega = NULL, Xi = NULL, Theta.t = NULL, total_model = "unif", pars = c("Eta", "Lambda", 
@@ -461,9 +451,11 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
   if (is.null(init)) 
     init <- fido:::random_pibble_init(Y)
   
+  # using Xi since it is the prior of Omega^comp
   KInv <- chol2inv(chol(Xi))
   AInv <- chol2inv(chol(diag(N) + t(X) %*% Gamma %*% X))
   
+  # theta is the prior on the composition only.
   fitc <- optimPibbleCollapsed(Y, upsilon, Theta %*% X, KInv, 
                                AInv, init, n_samples, calcGradHess, b1, b2, step_size, 
                                epsilon, eps_f, eps_g, max_iter, verbose, verbose_rate, 
@@ -488,7 +480,7 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
         M.star = Theta.trans$obj.perp %*% X +  Xi.trans$obj.plus %*% solve(Xi.trans$obj.par) %*% ((lambda.par[,,i] - Theta.trans$obj.par %*% X))
         V.star = (diag(N) + t(X) %*% Gamma %*% X) %*% (diag(N) + solve((diag(N) + t(X) %*% Gamma %*% X)) %*% (t(lambda.par[,,i] - Theta.trans$obj.par %*% X) %*% solve(Xi.trans$obj.par) %*% ((lambda.par[,,i] - Theta.trans$obj.par %*% X))))
         Xi.star = Xi.trans$obj.perp - (Xi.trans$obj.plus) %*% solve(Xi.trans$obj.par) %*% t(Xi.trans$obj.plus)
-        tau[,i] = t.sampler(nu.star, M.star, Xi.star, V.star)
+        tau[,i] = mniw::rMT(1,M.star, Xi.star, V.star, nu.star)
       }
       
       ##Now, we need to transform the samples back to lambda:

@@ -61,7 +61,9 @@ plot_count <- function(dat){
     scale_fill_manual(values = c("#fdae61", "#2b83ba")) + 
     scale_color_manual(values = c("#fdae61", "#2b83ba")) +
     labs(color='Antibiotic\nTreatment') +
-    labs(fill='Antibiotic\nTreatment') 
+    labs(fill='Antibiotic\nTreatment') +
+    theme(plot.margin=grid::unit(c(0.5,0.5,0.5,0.5), "mm"))
+  
 }
 
 plot_sig2 <- function(rrs, truth, ...){
@@ -85,6 +87,7 @@ plot_sig2 <- function(rrs, truth, ...){
           text = element_text(size=16),
           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     scale_pattern_manual(values = c(TP = "none", TN = "none", FP = "none", FN = "stripe")) +
-    scale_fill_manual(values= c("black", "white", "grey", "white"))
+    scale_fill_manual(values= c("black", "white", "grey", "white")) +
+    theme(plot.margin=grid::unit(c(0.5,0.5,0.5,0.5), "mm"))
 }
 

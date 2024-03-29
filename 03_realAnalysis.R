@@ -12,6 +12,8 @@ library(directlabels)
 library(matrixNormal)
 library(ggpattern)
 library(LaplacesDemon)
+library(ggsci)
+library(mniw)
 
 
 set.seed(1234)
@@ -251,43 +253,73 @@ aldex_results
 
 # Summarise results and plot ----------------------------------------------
 
-sig_tram_design = sig_tram(fit_design)
+sig_gs <- fit_gs %>%
+  mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+  mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+  mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
+  mutate(res = ifelse(sig_code == "NS", "TN", "TP")) %>%
+  dplyr::select(category, sig, sig_code,res) %>%
+  mutate(Model = "SSRV - GS \n (Flow)     ")
 
-sig_tram_gs = sig_tram(fit_gs)
 
-sig_tram_pim = sig_tram(fit_pim)
+sig_tram_design <- fit_design %>%
+  mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+  mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+  mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
+  mutate(res = "TN") %>%
+  mutate(res = ifelse(((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) | ((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC")), "TP", res)) %>%
+  mutate(res = ifelse(((sig_code != "NS") &(sig_gs$sig_code == "NS")) | ((sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) | ((sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC")), "FP", res)) %>%
+  mutate(res = ifelse(((sig_code == "NS") &(sig_gs$sig_code != "NS")), "FN", res)) %>%
+  dplyr::select(category, sig, sig_code,res) %>%
+  mutate(Model = "SSRV (Design) ")
 
-###Extract anything that's significant anywhere across all models
-sig.values = c(aldex_results$category,deseq_results$category, sig_tram_design$category, sig_tram_pim$category, sig_tram_gs$category) %>% unique
+sig_tram_pim <- fit_pim %>%
+  mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+  mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+  mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
+  mutate(res = "TN") %>%
+  mutate(res = ifelse(((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) | ((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC")), "TP", res)) %>%
+  mutate(res = ifelse(((sig_code != "NS") &(sig_gs$sig_code == "NS")) | ((sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) | ((sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC")), "FP", res)) %>%
+  mutate(res = ifelse(((sig_code == "NS") &(sig_gs$sig_code != "NS")), "FN", res)) %>%
+  dplyr::select(category, sig, sig_code,res) %>%
+  mutate(Model = "SSRV (PIM)")
 
-###Some light processing to make it more useful
 
-truth.pos = sig_tram_gs$category
-truth.pos = sub("seq_", "", truth.pos)
+deseq_results = deseq_fit %>%
+  as.data.frame() %>%
+  rownames_to_column("category") %>%
+  mutate(sig = ifelse(padj < 0.05, TRUE, FALSE)) %>%
+  mutate(direction = sign(log2FoldChange)) %>%
+  mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
+  mutate(res = "TN") %>%
+  mutate(res = ifelse(((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) | ((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC")), "TP", res)) %>%
+  mutate(res = ifelse(((sig_code != "NS") &(sig_gs$sig_code == "NS")) | ((sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) | ((sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC")), "FP", res)) %>%
+  mutate(res = ifelse(((sig_code == "NS") &(sig_gs$sig_code != "NS")), "FN", res)) %>%
+  dplyr::select(category, sig, sig_code,res) %>%
+  mutate(Model = "DESeq2")
+
+
+aldex_results = aldex_fit %>% 
+  rownames_to_column("category") %>%
+  mutate(sig = ifelse(base..I.day.14.pval.padj < 0.05, TRUE, FALSE)) %>%
+  mutate(direction = sign(base..I.day.14.Est)) %>%
+  mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
+  mutate(res = "TN") %>%
+  mutate(res = ifelse(((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) | ((sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC")), "TP", res)) %>%
+  mutate(res = ifelse(((sig_code != "NS") &(sig_gs$sig_code == "NS")) | ((sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) | ((sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC")), "FP", res)) %>%
+  mutate(res = ifelse(((sig_code == "NS") &(sig_gs$sig_code != "NS")), "FN", res)) %>%
+  dplyr::select(category, sig, sig_code,res) %>%
+  mutate(Model = "ALDEx2")
+
+
 
 ##Generating the grid plot
-q=length(sig.values)
 
-sig.df = data.frame("Sequence" = rep(str_split_fixed(sig.values, "\\_", 2)[,2],5))
-sig.df = sig.df %>%
-  mutate(Sequence = ifelse(Sequence == "", "Other", Sequence)) %>%
-  mutate(true.pos = ifelse(Sequence %in% truth.pos, 1, 0)) %>%
-  mutate(Model = c(rep("ALDEx2", q),rep("DESeq2", q), rep("SSRV (Design) ", q),  rep("SSRV (PIM)", q), rep("SSRV - GS \n (Flow)     ", q))) %>%
-  mutate(sigcode = c(ifelse(sig.values %in% aldex_results$category, 1, 0),ifelse( sig.values %in% deseq_results$category, 1, 0),ifelse( sig.values %in% sig_tram_design$category, 1, 0), ifelse( sig.values %in% sig_tram_pim$category, 1, 0), ifelse( sig.values %in% sig_tram_gs$category, 1, 0))) %>%
-  mutate(res = ifelse(true.pos == 1 & sigcode == 1, "TP", NA)) %>%
-  mutate(res = ifelse(true.pos == 0 & sigcode == 0, "TN", res)) %>%
-  mutate(res = ifelse(true.pos == 1 & sigcode == 0, "FN", res)) %>%
-  mutate(res = ifelse(true.pos == 0 & sigcode == 1, "FP", res)) %>%
-  mutate(sigcode = factor(sigcode, levels = list("Non. Sig."="0", "Sig."="1"))) %>%
-  mutate(Sequence = as.numeric(sig.df$Sequence)) %>%
-  arrange(Sequence) %>%
-  mutate(Sequence = as.factor(Sequence)) %>%
-  filter(!is.na(Sequence))
+sig.df <- rbind(aldex_results, deseq_results, sig_tram_design, sig_tram_pim, sig_gs) %>%
+  filter(category != "Other")
 
-
-sig.df$Model = factor(sig.df$Model, levels=c("ALDEx2", "DESeq2", "SSRV (CLR) ", "SSRV (CoDA) ", "SSRV (Design) ", "SSRV (PIM)", "SSRV - GS \n (Flow)     "))
-sig.df$Sequence = as.character(sig.df$Sequence)
-sig.df$Sequence = factor(sig.df$Sequence, levels =c(as.character(sort(as.numeric(str_split_fixed(sig.values, "\\_", 2)[,2]))), "Other"))
+sig.df$Model = factor(sig.df$Model, levels=c("ALDEx2", "DESeq2", "SSRV (Design) ", "SSRV (PIM)", "SSRV - GS \n (Flow)     "))
+sig.df$Sequence = matrix(unlist(str_split(sig.df$category, "_")), ncol = 2, byrow = TRUE)[,2]
 
 ##No color labels
 p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
@@ -301,10 +333,8 @@ p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
   scale_fill_manual(values= c("white", "#fdae61", "white", "#2b83ba")) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-p2
 
-
-ggsave(file.path("results", "model_comparison_flowData.pdf"), height=3, width=9)
+ggsave(file.path("results", "model_comparison_flowData.pdf"), plot = p2, height=3, width=9)
 
 
 
@@ -312,46 +342,47 @@ ggsave(file.path("results", "model_comparison_flowData.pdf"), height=3, width=9)
 ####Repeated sampling
 # Set Priors  / data
 ##num vessels
-
+set.seed(2024)
 num.vessels = c(6, 10,15,25,30,40,50)
-  
+replicates = 2
+
 otu_filtered.day1 = otu_filtered[,1:6]
 otu_filtered.day14 = otu_filtered[,7:12]
 
 seq.names = rownames(Y)
-fdr = matrix(NA,nrow = length(num.vessels), ncol = 4)
-fdr[,1] = num.vessels
-colnames(fdr) = c("num.vessels","relaxed","aldex2","deseq2")
 
 ## num false positives
-fp = matrix(NA,nrow = length(num.vessels), ncol = 4)
-fp[,1] = num.vessels
-colnames(fp) = c("num.vessels","relaxed","aldex2","deseq2")
+fp = matrix(NA,nrow = length(num.vessels) * replicates, ncol = 6)
+fp[,1] = rep(num.vessels, each = replicates)
+colnames(fp) = c("num.vessels","ind", "Design","ALDEx2","DESeq2", "PIM")
 
-## sensitivity
-sen = matrix(NA,nrow = length(num.vessels), ncol = 4)
-sen[,1] = num.vessels
-colnames(sen) = c("num.vessels","relaxed","aldex2","deseq2")
+## num true positives
+tp = matrix(NA,nrow = length(num.vessels) * replicates, ncol = 6)
+tp[,1] = rep(num.vessels, each = replicates)
+colnames(tp) = c("num.vessels","ind", "Design","ALDEx2","DESeq2", "PIM")
 
-## type-ii error
-typeii = matrix(NA,nrow = length(num.vessels), ncol = 4)
-typeii[,1] = num.vessels
-colnames(typeii) = c("num.vessels","relaxed","aldex2","deseq2")
+## num true negatives
+tn = matrix(NA,nrow = length(num.vessels) * replicates, ncol = 6)
+tn[,1] = rep(num.vessels, each = replicates)
+colnames(tn) = c("num.vessels","ind", "Design","ALDEx2","DESeq2", "PIM")
 
-replicates = 25
+## num false negatives
+fn = matrix(NA,nrow = length(num.vessels) * replicates, ncol = 6)
+fn[,1] = rep(num.vessels, each = replicates)
+colnames(fn) = c("num.vessels","ind", "Design","ALDEx2","DESeq2", "PIM")
+
+ind <- 1
 for(i in 1:length(num.vessels)){
-  tmp.fdr = rep(0,3)
-  tmp.fp = rep(0,3)
-  tmp.sen = rep(0,3)
-  tmp.typeii = rep(0,3)
-  
   for(k in 1:replicates){
-    if(num.vessels[i] != 6){
-      vessels.used = sample(3:8, num.vessels[i],replace = TRUE)
-    } else{
-      vessels.used = sample(3:8, num.vessels[i],replace = FALSE)
-    }
-    
+    # set the ind variable
+    fn[ind,2] <- ind
+    tn[ind,2] <- ind
+    fp[ind,2] <- ind
+    tp[ind,2] <- ind
+      
+    vessels.used = sample(3:8, num.vessels[i],replace = TRUE)
+
+      
     # "-2" because the vessel numbers are 3-8
     otu.day1 = otu_filtered.day1[,c(vessels.used-2)]
     otu.day14 = otu_filtered.day14[,c(vessels.used-2)]
@@ -377,34 +408,56 @@ for(i in 1:length(num.vessels)){
     rownames(X) = c(paste0("base::I(vessel)", 1:num.vessels[i]), "base::I(day)14")
     
     upsilon <- nrow(Y) + 3
-    Theta <- matrix(0, nrow(Y)-1, nrow(X))
     Gamma <- driver::bdiag(10*diag(num.vessels[i]), 1) # Learn this function as well -- makes block diagonal matricies
+    # This is the prior. Xi would technically be omega^comp
     Omega = diag(nrow(Y))
-    G = cbind(diag(nrow(Y)-1), -1)
     Xi = G%*%Omega%*%t(G)
+    Theta.t <- matrix(0, nrow(Y), nrow(X))
+    Theta.t[,7] <- 0
+    G = cbind(diag(nrow(Y)-1), -1)
+    # prior for Theta^comp
+    Theta <- G %*% Theta.t
 
     fit_gs <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[nrow(X)],
                                   upsilon = upsilon, Gamma = Gamma,
                                   Theta = Theta, Omega = Omega, Xi = Xi, prob = 0.05, n_samples = 2000, total_model = "flow", sample.totals =flow_filtered_rep, sample = c(paste0( 1:num.vessels[i], "_day1"),paste0(1:num.vessels[i], "_day14")))
-    
+    sig_gs <- fit_gs %>%
+      mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+      mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+      mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS"))
     
     fit_unif <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[nrow(X)],
                                     upsilon = upsilon, Gamma = Gamma,
                                     Theta = Theta, Omega = Omega, Xi = Xi, prob = 0.05, n_samples = 2000,  total_model = "logNormal",sd_lnorm = sqrt(0.5^2/2), mean_lnorm= rep(c(log(1),log(4)), each = num.vessels[i]),  sample = 1:(2*num.vessels[i]))
+
+    sig_unif <- fit_unif %>%
+      mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+      mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+      mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS"))
+
+    ##calculating statistics for design model
+    tp[ind,3] <- sum((sig_unif$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) + sum((sig_unif$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC"))
+    fp[ind,3] <-  sum((sig_unif$sig_code != "NS") &(sig_gs$sig_code == "NS")) + sum((sig_unif$sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) +  sum((sig_unif$sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC"))
+    fn[ind,3] <- sum((sig_unif$sig_code == "NS") &(sig_gs$sig_code != "NS"))
+    tn[ind,3] <- sum((sig_unif$sig_code == "NS") &(sig_gs$sig_code == "NS"))
     
-    sig_tram_gs = sig_tram(fit_gs)
-    truth.pos = sig_tram_gs$category
-    truth.neg = !(fit_gs$category %in% truth.pos)
+    # PIM
+    fit_pim <- ssrv.mln(as.matrix(Y),X, covariate = rownames(X)[nrow(X)],
+                        upsilon = upsilon, Gamma = Gamma,
+                        Theta = Theta, Omega = Omega, Xi = Xi, Theta.t = Theta.t, n_samples = 2000, total_model = "pim", prob = 0.05)
     
-    sig_tram_unif = sig_tram(fit_unif)
-    sig_tram_unif_neg <- fit_unif %>%
-      filter(sign(high) != sign(low))
+    sig_pim <- fit_pim %>%
+      mutate(sig = ifelse(sign(low) == sign(high), TRUE, FALSE)) %>%
+      mutate(direction = -1*sign(mean)) %>% ## -1 needed to correct for direction changes to make comparable to aldex2/deseq2
+      mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS"))
     
-    tmp.fdr[1] = tmp.fdr[1] + ifelse(nrow(sig_tram_unif) > 0, sum(!(sig_tram_unif$category %in% truth.pos))/nrow(sig_tram_unif), 0)
-    tmp.fp[1] = tmp.fp[1] + sum(!(sig_tram_unif$category %in% truth.pos))
-    tmp.sen[1] = tmp.sen[1] + ifelse(nrow(sig_tram_unif) > 0, sum((sig_tram_unif$category %in% truth.pos))/length(truth.pos), 0)
-    tmp.typeii[1] = tmp.typeii[1] + ifelse(nrow(sig_tram_unif) > 0, sum((sig_tram_unif_neg$category %in% truth.pos))/length(truth.pos), 0)
+    tp[ind,6] <- sum((sig_pim$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) + sum((sig_pim$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC"))
+    fp[ind,6] <-  sum((sig_pim$sig_code != "NS") &(sig_gs$sig_code == "NS")) + sum((sig_pim$sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) +  sum((sig_pim$sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC"))
+    fn[ind,6] <- sum((sig_pim$sig_code == "NS") &(sig_gs$sig_code != "NS"))
+    tn[ind,6] <- sum((sig_pim$sig_code == "NS") &(sig_gs$sig_code == "NS"))
     
+
+    #running deseq2
     X.modelMat = t(X) %>% data.frame() %>% lapply(. %>% as.factor) %>% data.frame()
     
     deseq.design = as.formula(paste("~",paste(names(X.modelMat[,-1]), collapse = "+"),sep = " "))
@@ -416,27 +469,15 @@ for(i in 1:length(num.vessels)){
     deseq_fit = results(dds)
     
     deseq_results = deseq_fit %>%
-      as.data.frame() %>% 
-      rownames_to_column("category") %>% 
-      dplyr::select(category, log2FoldChange, pvalue, lfcSE) %>% 
-      mutate(low = log2FoldChange -1.96*lfcSE, 
-             high = log2FoldChange + 1.96*lfcSE) %>% 
-      mutate(mean=log2FoldChange) %>%
-      filter(pvalue < .05)
+      as.data.frame() %>%
+      mutate(sig = ifelse(padj < 0.05, TRUE, FALSE)) %>%
+      mutate(direction = sign(log2FoldChange)) %>%
+      mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS"))
     
-    deseq_results_neg = deseq_fit %>%
-      as.data.frame() %>% 
-      rownames_to_column("category") %>% 
-      dplyr::select(category, log2FoldChange, pvalue, lfcSE) %>% 
-      mutate(low = log2FoldChange -1.96*lfcSE, 
-             high = log2FoldChange + 1.96*lfcSE) %>% 
-      mutate(mean=log2FoldChange) %>%
-      filter(pvalue > .05)
-    
-    tmp.fdr[3] = tmp.fdr[3] + ifelse(nrow(deseq_results) > 0, sum(!(deseq_results$category %in% truth.pos))/nrow(deseq_results), 0)
-    tmp.fp[3] = tmp.fp[3] + sum(!(deseq_results$category %in% truth.pos))
-    tmp.sen[3] = tmp.sen[3] + ifelse(nrow(deseq_results) > 0, sum((deseq_results$category %in% truth.pos))/length(truth.pos), 0)
-    tmp.typeii[3] = tmp.typeii[3] + ifelse(nrow(deseq_results) > 0, sum((deseq_results_neg$category %in% truth.pos))/length(truth.pos), 0)
+    tp[ind,5] <- sum((deseq_results$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) + sum((deseq_results$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC"))
+    fp[ind,5] <-  sum((deseq_results$sig_code != "NS") &(sig_gs$sig_code == "NS")) + sum((deseq_results$sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) +  sum((deseq_results$sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC"))
+    fn[ind,5] <- sum((deseq_results$sig_code == "NS") &(sig_gs$sig_code != "NS"))
+    tn[ind,5] <- sum((deseq_results$sig_code == "NS") &(sig_gs$sig_code == "NS"))
     
     
     ###Aldex2 now
@@ -446,79 +487,190 @@ for(i in 1:length(num.vessels)){
     
     aldex_results = aldex_fit %>% 
       rownames_to_column("category") %>%
-      dplyr::select(category,base..I.day.14.t.val, base..I.day.14.pval, base..I.day.14.pval.padj) %>%
-      mutate(pval = base..I.day.14.pval) %>%
-      mutate(padj = base..I.day.14.pval.padj) %>%
-      filter(pval < .05)
+      mutate(sig = ifelse(base..I.day.14.pval.padj < 0.05, TRUE, FALSE)) %>%
+      mutate(direction = sign(base..I.day.14.Est)) %>%
+      mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS"))
     
+    tp[ind,4] <- sum((aldex_results$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigINC")) + sum((aldex_results$sig_code == sig_gs$sig_code) &(sig_gs$sig_code == "SigDEC"))
+    fp[ind,4] <-  sum((aldex_results$sig_code != "NS") &(sig_gs$sig_code == "NS")) + sum((aldex_results$sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) +  sum((aldex_results$sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC"))
+    fn[ind,4] <- sum((aldex_results$sig_code == "NS") &(sig_gs$sig_code != "NS"))
+    tn[ind,4] <- sum((aldex_results$sig_code == "NS") &(sig_gs$sig_code == "NS"))
     
-    aldex_results_neg = aldex_fit %>% 
-      rownames_to_column("category") %>%
-      dplyr::select(category,base..I.day.14.t.val, base..I.day.14.pval, base..I.day.14.pval.padj) %>%
-      mutate(pval = base..I.day.14.pval) %>%
-      mutate(padj = base..I.day.14.pval.padj) %>%
-      filter(pval > .05)
-    tmp.fdr[2] = tmp.fdr[2] + ifelse(nrow(aldex_results) > 0, sum(!(aldex_results$category %in% truth.pos))/nrow(aldex_results), 0)
-    tmp.fp[2] = tmp.fp[2] + sum(!(aldex_results$category %in% truth.pos))
-    tmp.sen[2] = tmp.sen[2] + ifelse(nrow(aldex_results) > 0, sum((aldex_results$category %in% truth.pos))/length(truth.pos), 0)
-    tmp.typeii[2] = tmp.typeii[2] + ifelse(nrow(aldex_results) > 0, sum((aldex_results_neg$category %in% truth.pos))/length(truth.pos), 0)
-    
+
+    print(ind)
+    ind <- ind+1
   }
-  ## filling inthe data frames
-  fdr[i,2] = tmp.fdr[1]/replicates
-  fdr[i,3] = tmp.fdr[2]/replicates
-  fdr[i,4] = tmp.fdr[3]/replicates
-  
-  fp[i,2] = tmp.fp[1]/replicates
-  fp[i,3] = tmp.fp[2]/replicates
-  fp[i,4] = tmp.fp[3]/replicates
-  
-  sen[i,2] = tmp.sen[1]/replicates
-  sen[i,3] = tmp.sen[2]/replicates
-  sen[i,4] = tmp.sen[3]/replicates
-  
-  typeii[i,2] = tmp.typeii[1]/replicates
-  typeii[i,3] = tmp.typeii[2]/replicates
-  typeii[i,4] = tmp.typeii[3]/replicates
-  
   print(i)
 }
 
+tn <- tn %>%
+  as.data.frame() %>%
+  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "tn")
 
-fdr.all = data.frame(vals = rep(num.vessels,3), fdr = c(c(typeii[,3]),c(typeii[,4]), c(typeii[,2])), method = rep(c("ALDEx2", "DESeq2", "SSRV (Design)"), each = length(num.vessels)))
+typei <- fp %>%
+  as.data.frame() %>%
+  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "fp") %>%
+  plyr::join(tn, by =c("num.vessels", "ind", "method")) %>%
+  mutate(fdr = ifelse((fp+tn) > 0, fp/(fp+tn), 0)) %>%
+  dplyr::select(-ind) %>%
+  group_by(num.vessels, method) %>%
+  mutate(mean = mean(fdr, na.rm=TRUE)) %>%
+  mutate(meanfp = mean(fp, na.rm= TRUE)) %>%
+  mutate(sd = sd(fdr, na.rm = TRUE)) %>%  
+  mutate(sdfp = sd(fp, na.rm = TRUE)) %>%
+  ungroup()  %>%
+  dplyr::select(-c(fp, tn, fdr)) %>%
+  unique()
 
-fdr.all$method = as.factor(fdr.all$method)
-
-ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = method)) +
+##plotting
+plot1 <- ggplot(typei, aes(x = num.vessels, y = mean, group = method,linetype = method, color = method, fill = method)) +
+  #geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
   geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw()+
-  xlim(c(6,50)) +
-  ylim(c(0,1))+
-  xlab("Number of Vessels per Condition") +
-  ylab("Type-II Error Rate") + 
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
-  theme(text=element_text(size=14)) + 
-  theme(legend.title = element_blank()) +
-  theme(legend.position = c(.65, .825))
-ggsave(file.path("results", "unacknowledged_bias_realData-typeii.pdf"), height=4, width=4.5)
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Type-I Error") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot1
 
-fdr.all = data.frame(vals = rep(num.vessels,3), fdr = c(c(fdr[,3]),c(fdr[,4]), c(fdr[,2])), method = rep(c("ALDEx2", "DESeq2", "SSRV (Design)"), each = length(num.vessels)))
+ggsave(file.path("results", "typei-by-method-gut-data.pdf"), height=4, width=4.5)
 
-fdr.all$method = as.factor(fdr.all$method)
-
-ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = method)) +
+plot1 <- ggplot(typei, aes(x = num.vessels, y = mean, group = method,linetype = method, color = method, fill = method)) +
+  geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
   geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw()+
-  xlim(c(6,50)) +
-  ylim(c(0,.225))+
-  geom_hline(aes(yintercept = 3/31), col = "red", lty = "dashed")+
-  xlab("Number of Vessels per Condition") +
-  ylab("False Discovery Rate") + 
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
-  theme(text=element_text(size=14)) + 
-  theme(legend.title = element_blank()) +
-  theme(legend.position = c(.65, .725))
-ggsave(file.path("results", "unacknowledged_bias_realData-fdr.pdf"), height=4, width=4.5)
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Type-I Error") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot1
 
+ggsave(file.path("results", "typei-by-method-gut-data_errors.pdf"), height=4, width=4.5)
+
+
+plot2 <- ggplot(typei, aes(x = num.vessels, y = meanfp, group = method, linetype = method, color = method, fill = method)) +
+  #geom_ribbon(aes(ymin = meanfp-sdfp, ymax=meanfp+sdfp), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Number of False Positives") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot2
+
+ggsave(file.path("results", "fp-by-method-gut-data.pdf"), height=4, width=4.5)
+
+plot2 <- ggplot(typei, aes(x = num.vessels, y = meanfp, group = method, linetype = method, color = method, fill = method)) +
+  geom_ribbon(aes(ymin = meanfp-sdfp, ymax=meanfp+sdfp), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Number of False Positives") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot2
+
+ggsave(file.path("results", "fp-by-method-gut-data-errors.pdf"), height=4, width=4.5)
+
+
+tp <- tp %>%
+  as.data.frame() %>%
+  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "tp")
+
+fdr <- fp %>%
+  as.data.frame() %>%
+  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "fp") %>%
+  plyr::join(tp, by =c("num.vessels", "ind", "method")) %>%
+  mutate(fdr = ifelse((fp+tp) > 0, fp/(fp+tp), 0)) %>%
+  dplyr::select(-ind) %>%
+  group_by(num.vessels, method) %>%
+  mutate(mean = mean(fdr, na.rm = TRUE)) %>%
+  mutate(sd = sd(fdr, na.rm = TRUE)) %>%
+  ungroup() %>%
+  dplyr::select(-c(fp, tp, fdr)) %>%
+  unique()
+
+##plotting
+plot3 <- ggplot(fdr, aes(x = num.vessels, y = mean, group = method, linetype = method, color = method, fill = method)) +
+  #geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("False Discovery Rate") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot3
+
+ggsave(file.path("results", "fdr-by-method-gut-data.pdf"), height=4, width=4.5)
+
+plot3 <- ggplot(fdr, aes(x = num.vessels, y = mean, group = method, linetype = method, color = method, fill = method)) +
+  geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("False Discovery Rate") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot3
+
+ggsave(file.path("results", "fdr-by-method-gut-data-errors.pdf"), height=4, width=4.5)
+
+# Type II error
+typeii <- fn %>%
+  as.data.frame() %>%
+  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "fn") %>%
+  plyr::join(tp, by =c("num.vessels", "ind", "method")) %>%
+  mutate(typeii = ifelse((fn+tp) > 0, fn/(fn+tp), 0)) %>%
+  dplyr::select(-ind) %>%
+  group_by(num.vessels, method) %>%
+  mutate(mean = mean(typeii, na.rm = TRUE)) %>%
+  mutate(sd = sd(typeii, na.rm = TRUE)) %>%
+  ungroup() %>%
+  dplyr::select(-c(fn, tp, typeii)) %>%
+  unique()
+  
+
+##plotting##plottingTRUE
+plot4 <- ggplot(typeii, aes(x = num.vessels, y = mean, linetype = method, group = method, color = method, fill = method)) +
+  #geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Type-II Error") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot4
+
+ggsave(file.path("results", "typeii-by-method-gut-data.pdf"), height=4, width=4.5)
+
+plot4 <- ggplot(typeii, aes(x = num.vessels, y = mean, linetype = method, group = method, color = method, fill = method)) +
+  geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
+  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
+  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
+  geom_line(alpha = 1, lwd = 1.1) +
+  theme_bw() +
+  xlab("Number of Vessels") +
+  ylab("Type-II Error") +
+  theme(legend.title = element_blank(),
+        text = element_text(size=16))
+plot4
+
+ggsave(file.path("results", "typeii-by-method-gut-data-errors.pdf"), height=4, width=4.5)
