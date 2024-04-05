@@ -43,6 +43,11 @@ aldexDeseq_analysis <- function(d, n, seq.depth, pval = 0.05, prob = .99){
   afit <- summary_aldex2(afit)
   afit <- append_sig(afit, function(x) sig_aldex2(x, pval=pval))
   
+  ##SSRV
+  ssrv <- run_fakeAldex(rdat, n_samples = 1000, gamma = 0.5)
+  ssrv <- summary_aldex2(ssrv)
+  ssrv <- append_sig(ssrv, function(x) sig_aldex2(x, pval = pval))
+  
   ##Find the true positives and false positives for each
   fp.deseq = sum(dfit$sig == TRUE & truth1 == FALSE)
   tp.deseq = sum(dfit$sig == TRUE & truth1 == TRUE)
@@ -50,21 +55,25 @@ aldexDeseq_analysis <- function(d, n, seq.depth, pval = 0.05, prob = .99){
   fp.aldex = sum(afit$sig == TRUE & truth1 == FALSE)
   tp.aldex = sum(afit$sig == TRUE & truth1 == TRUE)
   
+  fp.ssrv = sum(ssrv$sig == TRUE & truth1 == FALSE)
+  tp.ssrv = sum(ssrv$sig == TRUE & truth1 == TRUE)
   
-  return(list("fp_deseq" = fp.deseq, "tp_deseq" = tp.deseq, "fp_aldex" = fp.aldex, "tp_aldex" = tp.aldex))
+  return(list("fp_deseq" = fp.deseq, "tp_deseq" = tp.deseq, "fp_aldex" = fp.aldex, "tp_aldex" = tp.aldex, "fp_ssrv" = fp.ssrv, "tp_ssrv" = tp.ssrv))
   
 }# end of function
 
 ##Running the above helper function
 model.names <- c("dfit"="DESeq2",
-                 "afit"="ALDEx2")
-model.name.levels <- c("DESeq2", "ALDEx2")
+                 "afit"="ALDEx2",
+                 "ssrv" = "Relaxed")
+model.name.levels <- c("DESeq2", "ALDEx2", "Relaxed")
 
 ##Number of conditions to run it on
 vals = c(10,25,50,75,100, 125, 150, 200)
 
 fdr.aldex = rep(NA, length(vals))
 fdr.deseq = rep(NA, length(vals))
+fdr.ssrv = rep(NA, length(vals))
 
 ##Repeat for each sample size
 for(i in 1:length(vals)){
@@ -74,22 +83,24 @@ for(i in 1:length(vals)){
   ##Calculate FDR
   fdr.aldex[i] = res$fp_aldex/(res$fp_aldex + res$tp_aldex)
   fdr.deseq[i] = res$fp_deseq/(res$fp_deseq + res$tp_deseq)
+  fdr.ssrv[i] = res$fp_ssrv/(res$fp_ssrv + res$tp_ssrv)
+  
 
   print(i)
 }
 
 ##Now, graphing the FDR rates by methods...
-fdr.all = data.frame(vals = rep(vals,2), fdr = c(c(fdr.aldex),c(fdr.deseq)), method = rep(c("ALDEx2", "DESeq2"), each = length(vals)))
+fdr.all = data.frame(vals = rep(vals,3), fdr = c(c(fdr.aldex),c(fdr.deseq), c(fdr.ssrv)), method = rep(c("ALDEx2", "DESeq2", "Relaxed"), each = length(vals)))
 fdr.all$method = as.factor(fdr.all$method)
 
 ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = method)) +
   geom_line(alpha = 1, lwd = 1.1) +
   theme_bw()+
   xlim(c(0,200)) +
-  xlab("Sample Size") +
+  xlab("Sample Size per Condition") +
   ylab("False Discovery Rate") + 
-  scale_color_manual(values=c("#5e3c99", "#e66101")) + 
-  scale_linetype_manual(values = c("dotted", "twodash")) +
+  scale_color_manual(values=c("#5e3c99", "#e66101","#2b83ba")) + 
+  scale_linetype_manual(values = c("dotted", "twodash","longdash")) +
   theme(text=element_text(size=14)) + 
   geom_hline(yintercept=17/21, linetype="dashed", color = "grey") +
   theme(legend.title = element_blank())
@@ -158,7 +169,7 @@ ggplot(fdr.all, aes(x=vals, y=fdr, color=method, fill = method, linetype = metho
   geom_line(alpha = 1, lwd = 1.1, position = position_dodge(width = 0.5)) +
   theme_bw()+
   xlim(c(0,200)) +
-  xlab("Sample Size") +
+  xlab("Sample Size per Condition") +
   ylab("False Discovery Rate") + 
   scale_color_manual(values=c("#e66101", "#5e3c99")) + 
   scale_linetype_manual(values = c("twodash", "dotted")) +

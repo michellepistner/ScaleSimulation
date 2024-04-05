@@ -400,10 +400,21 @@ GG <- function(obj, D){
   }
 }
 
+## See Gupta and Nagar: Matrix Variate Distribution for details on sampling from matrix-T.
+t.sampler <- function(nu.star, M.star, Xi.star, V.star){
+  Sigma = rinvwishart(nu.star + 2*nrow(Xi.star), Xi.star)
+  C = t(chol(Sigma))
+  mean = matrix(0, nrow = nrow(M.star), ncol = ncol(M.star))
+  X = rmatnorm(1,mean, diag(nrow(M.star)), V.star)
+  Y= C %*% X + M.star
+  
+  return(Y)
+}
+
  
 ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL, 
                                Gamma = NULL, Omega = NULL, Xi = NULL, Theta.t = NULL, total_model = "unif", pars = c("Eta", "Lambda", 
-                                                                                                   "Sigma"), sample.totals = NULL, sample = NULL, mean_lnorm = NULL, sd_lnorm = NULL, prob = 0.01,...){
+                                                                                                   "Sigma"), sample.totals = NULL, sample = NULL, mean_lnorm = NULL, sd_lnorm = NULL, prob = 0.01, flag = FALSE,...){
   ###Copied from "pibble" function from fido package
   args <- list(...)
   N <- fido:::try_set_dims(c(ncol(Y), ncol(X), args[["N"]]))
@@ -480,7 +491,7 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
         M.star = Theta.trans$obj.perp %*% X +  Xi.trans$obj.plus %*% solve(Xi.trans$obj.par) %*% ((lambda.par[,,i] - Theta.trans$obj.par %*% X))
         V.star = (diag(N) + t(X) %*% Gamma %*% X) %*% (diag(N) + solve((diag(N) + t(X) %*% Gamma %*% X)) %*% (t(lambda.par[,,i] - Theta.trans$obj.par %*% X) %*% solve(Xi.trans$obj.par) %*% ((lambda.par[,,i] - Theta.trans$obj.par %*% X))))
         Xi.star = Xi.trans$obj.perp - (Xi.trans$obj.plus) %*% solve(Xi.trans$obj.par) %*% t(Xi.trans$obj.plus)
-        tau[,i] = mniw::rMT(1,M.star, Xi.star, V.star, nu.star)
+        tau[,i] = t.sampler(nu.star, M.star, Xi.star, V.star)
       }
       
       ##Now, we need to transform the samples back to lambda:
@@ -558,6 +569,7 @@ ssrv.mln<- function(Y = NULL, X = NULL, covariate, upsilon = NULL, Theta = NULL,
   low <- apply(target.estimator, 1, FUN = quantile, probs = prob/2)
   high <- apply(target.estimator, 1, FUN = quantile, probs = 1-prob/2)
 
+  #if(flag == TRUE) return(lambda)
   return(data.frame(mean = mean, sd = sd, low = low, high = high, category = rownames(Y)))
 }#end of function
 

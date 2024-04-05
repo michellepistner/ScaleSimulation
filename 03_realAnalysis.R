@@ -35,7 +35,11 @@ flow <- read.csv(file=file.path("data", "counts_with_batch.csv"), header=TRUE) %
          batch = factor(batch), 
          count = count *100000) # From jeff to get cell/ml
 
-
+theta.calc <- flow %>%
+  filter(day %in% c(1,14)) %>%
+  filter(vessel %in% c(3,4,5,6,7,8)) %>%
+  group_by(vessel,day) %>%
+  summarize(count = mean(count))
 
 # preprocess data ---------------------------------------------------------
 
@@ -177,7 +181,7 @@ plot_alpha <- function(Y, X, alpha=seq(0.01, 10, by=.5),
     theme(legend.position = "none") 
     
     p1
-    return(list(p1 = p1))
+    return(list(p1=p1))
 }
 
 
@@ -282,13 +286,13 @@ sig_tram_pim <- fit_pim %>%
   mutate(res = ifelse(((sig_code != "NS") &(sig_gs$sig_code == "NS")) | ((sig_code == "SigINC") &(sig_gs$sig_code == "SigDEC")) | ((sig_code == "SigDEC") &(sig_gs$sig_code == "SigINC")), "FP", res)) %>%
   mutate(res = ifelse(((sig_code == "NS") &(sig_gs$sig_code != "NS")), "FN", res)) %>%
   dplyr::select(category, sig, sig_code,res) %>%
-  mutate(Model = "SSRV (PIM)")
+  mutate(Model = "PIM")
 
 
 deseq_results = deseq_fit %>%
   as.data.frame() %>%
   rownames_to_column("category") %>%
-  mutate(sig = ifelse(padj < 0.05, TRUE, FALSE)) %>%
+  mutate(sig = ifelse(pvalue < 0.05, TRUE, FALSE)) %>%
   mutate(direction = sign(log2FoldChange)) %>%
   mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
   mutate(res = "TN") %>%
@@ -301,7 +305,7 @@ deseq_results = deseq_fit %>%
 
 aldex_results = aldex_fit %>% 
   rownames_to_column("category") %>%
-  mutate(sig = ifelse(base..I.day.14.pval.padj < 0.05, TRUE, FALSE)) %>%
+  mutate(sig = ifelse(base..I.day.14.pval < 0.05, TRUE, FALSE)) %>%
   mutate(direction = sign(base..I.day.14.Est)) %>%
   mutate(sig_code = ifelse(sig == TRUE, ifelse(direction ==1, "SigINC", "SigDEC"), "NS")) %>%
   mutate(res = "TN") %>%
@@ -318,8 +322,12 @@ aldex_results = aldex_fit %>%
 sig.df <- rbind(aldex_results, deseq_results, sig_tram_design, sig_tram_pim, sig_gs) %>%
   filter(category != "Other")
 
-sig.df$Model = factor(sig.df$Model, levels=c("ALDEx2", "DESeq2", "SSRV (Design) ", "SSRV (PIM)", "SSRV - GS \n (Flow)     "))
+sig.df$Model = factor(sig.df$Model, levels=c("ALDEx2", "DESeq2", "PIM", "SSRV (Design) ", "SSRV - GS \n (Flow)     "))
 sig.df$Sequence = matrix(unlist(str_split(sig.df$category, "_")), ncol = 2, byrow = TRUE)[,2]
+sig.df <- sig.df %>%
+  mutate(Sequence = as.numeric(sig.df$Sequence)) %>%
+  arrange(Sequence) %>%
+  mutate(Sequence = as.factor(Sequence)) 
 
 ##No color labels
 p2 = ggplot(sig.df, aes(x=Sequence, y=Model)) +
@@ -343,8 +351,8 @@ ggsave(file.path("results", "model_comparison_flowData.pdf"), plot = p2, height=
 # Set Priors  / data
 ##num vessels
 set.seed(2024)
-num.vessels = c(6, 10,15,25,30,40,50)
-replicates = 2
+num.vessels = c(6, 15,25,30,40,50)
+replicates = 25
 
 otu_filtered.day1 = otu_filtered[,1:6]
 otu_filtered.day14 = otu_filtered[,7:12]
@@ -522,67 +530,7 @@ typei <- fp %>%
   dplyr::select(-c(fp, tn, fdr)) %>%
   unique()
 
-##plotting
-plot1 <- ggplot(typei, aes(x = num.vessels, y = mean, group = method,linetype = method, color = method, fill = method)) +
-  #geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Type-I Error") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot1
-
-ggsave(file.path("results", "typei-by-method-gut-data.pdf"), height=4, width=4.5)
-
-plot1 <- ggplot(typei, aes(x = num.vessels, y = mean, group = method,linetype = method, color = method, fill = method)) +
-  geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Type-I Error") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot1
-
-ggsave(file.path("results", "typei-by-method-gut-data_errors.pdf"), height=4, width=4.5)
-
-
-plot2 <- ggplot(typei, aes(x = num.vessels, y = meanfp, group = method, linetype = method, color = method, fill = method)) +
-  #geom_ribbon(aes(ymin = meanfp-sdfp, ymax=meanfp+sdfp), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Number of False Positives") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot2
-
-ggsave(file.path("results", "fp-by-method-gut-data.pdf"), height=4, width=4.5)
-
-plot2 <- ggplot(typei, aes(x = num.vessels, y = meanfp, group = method, linetype = method, color = method, fill = method)) +
-  geom_ribbon(aes(ymin = meanfp-sdfp, ymax=meanfp+sdfp), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Number of False Positives") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot2
-
-ggsave(file.path("results", "fp-by-method-gut-data-errors.pdf"), height=4, width=4.5)
-
-
+# plotting
 tp <- tp %>%
   as.data.frame() %>%
   pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "tp")
@@ -613,7 +561,7 @@ plot3 <- ggplot(fdr, aes(x = num.vessels, y = mean, group = method, linetype = m
         text = element_text(size=16))
 plot3
 
-ggsave(file.path("results", "fdr-by-method-gut-data.pdf"), height=4, width=4.5)
+ggsave(file.path("results", "fdr-by-method-gut-data.pdf"), height=3, width=6)
 
 plot3 <- ggplot(fdr, aes(x = num.vessels, y = mean, group = method, linetype = method, color = method, fill = method)) +
   geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
@@ -628,49 +576,5 @@ plot3 <- ggplot(fdr, aes(x = num.vessels, y = mean, group = method, linetype = m
         text = element_text(size=16))
 plot3
 
-ggsave(file.path("results", "fdr-by-method-gut-data-errors.pdf"), height=4, width=4.5)
+ggsave(file.path("results", "fdr-by-method-gut-data-errors.pdf"), height=4, width=6)
 
-# Type II error
-typeii <- fn %>%
-  as.data.frame() %>%
-  pivot_longer(!c(num.vessels, ind), names_to = "method", values_to = "fn") %>%
-  plyr::join(tp, by =c("num.vessels", "ind", "method")) %>%
-  mutate(typeii = ifelse((fn+tp) > 0, fn/(fn+tp), 0)) %>%
-  dplyr::select(-ind) %>%
-  group_by(num.vessels, method) %>%
-  mutate(mean = mean(typeii, na.rm = TRUE)) %>%
-  mutate(sd = sd(typeii, na.rm = TRUE)) %>%
-  ungroup() %>%
-  dplyr::select(-c(fn, tp, typeii)) %>%
-  unique()
-  
-
-##plotting##plottingTRUE
-plot4 <- ggplot(typeii, aes(x = num.vessels, y = mean, linetype = method, group = method, color = method, fill = method)) +
-  #geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash", "solid")) +
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Type-II Error") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot4
-
-ggsave(file.path("results", "typeii-by-method-gut-data.pdf"), height=4, width=4.5)
-
-plot4 <- ggplot(typeii, aes(x = num.vessels, y = mean, linetype = method, group = method, color = method, fill = method)) +
-  geom_ribbon(aes(ymin = mean-sd, ymax=mean+sd), alpha = .1, colour = NA) +
-  scale_color_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  scale_linetype_manual(values = c("dotted", "twodash", "longdash")) +
-  scale_fill_manual(values=c("#AF4BCE", "#EA7369", "#2b83ba", "darkgreen")) + 
-  geom_line(alpha = 1, lwd = 1.1) +
-  theme_bw() +
-  xlab("Number of Vessels") +
-  ylab("Type-II Error") +
-  theme(legend.title = element_blank(),
-        text = element_text(size=16))
-plot4
-
-ggsave(file.path("results", "typeii-by-method-gut-data-errors.pdf"), height=4, width=4.5)
